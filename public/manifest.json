@@ -1,0 +1,9 @@
+{
+  "short_name": "TL Panel",
+  "name": "Vegavruddhi TL Panel",
+  "icons": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#1a4731",
+  "background_color": "#ffffff"
+}
