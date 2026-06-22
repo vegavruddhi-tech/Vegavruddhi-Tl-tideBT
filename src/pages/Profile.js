@@ -4,7 +4,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
 // Use port 4000 for profile API (existing Tide backend)
-const PROFILE_API_BASE = 'http://localhost:4000';
+const PROFILE_API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:4002';
 
 export default function Profile() {
   const navigate = useNavigate();

@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
-const PROFILE_API_BASE = 'http://localhost:4000';
+const PROFILE_API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:4002';
 
 function FormCard({ icon, title, sub, children }) {
   return (
@@ -60,10 +60,15 @@ export default function BTPaymentForm() {
     setError('');
     if (step === 1) {
       if (!transferToWhom) { setError('Please select Transfer to Whom.'); return; }
+      // Auto-fill transferTo for Self
+      if (transferToWhom === 'Self') {
+        setTransferTo(tl?.name || '');
+      }
       setStep(2);
     } else if (step === 2) {
       if (!senderName) { setError('Please select Sender Name.'); return; }
-      if (!transferTo) { setError('Please select Transfer to.'); return; }
+      if (!transferTo && transferToWhom !== 'Self') { setError('Please select Transfer to.'); return; }
+      if (transferToWhom === 'Self' && !transferTo) setTransferTo(tl?.name || '');
       if (!amount) { setError('Please enter Amount.'); return; }
       setStep(3);
     }
@@ -141,16 +146,20 @@ export default function BTPaymentForm() {
                 <select value={transferToWhom} onChange={e => setTransferToWhom(e.target.value)}
                   style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #dde8dd', borderRadius: 10, fontSize: 14, background: '#fafcfa', outline: 'none', color: transferToWhom ? '#1a4731' : '#888', cursor: 'pointer' }}>
                   <option value="">Choose</option>
-                  <option value="TL's & Managers">TL's & Managers</option>
                   <option value="FSE Ground Team">FSE Ground Team</option>
+                  <option value="Self">Self (My Own Fund)</option>
                 </select>
               </div>
             </FormCard>
           )}
 
-          {/* Step 2 — TL's & Manager / FSC Ground Team details */}
+          {/* Step 2 — TL's & Manager / FSC Ground Team / Self details */}
           {step === 2 && (
-            <FormCard icon="👤" title={transferToWhom} sub={transferToWhom === "TL's & Managers" ? "Kindly mention TL/Manager name properly" : "Select FSE details"}>
+            <FormCard icon="👤" title={transferToWhom} sub={
+              transferToWhom === 'Self' ? 'Fund will be recorded as your own fund' :
+              transferToWhom === "TL's & Managers" ? "Kindly mention TL/Manager name properly" :
+              "Select FSE details"
+            }>
               <div style={{ marginBottom: 14 }}>
                 <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-dark)', display: 'block', marginBottom: 6 }}>
                   Sender Name <span style={{ color: '#c62828' }}>*</span>
@@ -158,7 +167,6 @@ export default function BTPaymentForm() {
                 <select value={senderName} onChange={e => setSenderName(e.target.value)}
                   style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #dde8dd', borderRadius: 10, fontSize: 14, background: '#fafcfa', outline: 'none', color: senderName ? '#1a4731' : '#888', cursor: 'pointer' }}>
                   <option value="">Choose</option>
-                  {/* TODO: Replace with actual TL/Manager names from backend */}
                   <option value={tl?.name || ''}>{tl?.name || 'Current TL'}</option>
                 </select>
               </div>
@@ -167,11 +175,18 @@ export default function BTPaymentForm() {
                 <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-dark)', display: 'block', marginBottom: 6 }}>
                   Transfer to <span style={{ color: '#c62828' }}>*</span>
                 </label>
-                <select value={transferTo} onChange={e => setTransferTo(e.target.value)}
-                  style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #dde8dd', borderRadius: 10, fontSize: 14, background: '#fafcfa', outline: 'none', color: transferTo ? '#1a4731' : '#888', cursor: 'pointer' }}>
-                  <option value="">Choose</option>
-                  {fseList.map((fse, i) => <option key={i} value={fse}>{fse}</option>)}
-                </select>
+                {transferToWhom === 'Self' ? (
+                  // Self — auto-filled, read-only
+                  <div style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #b2dfdb', borderRadius: 10, fontSize: 14, background: '#e0f7fa', color: '#00695c', fontWeight: 700 }}>
+                    {tl?.name || 'Self'} (Self)
+                  </div>
+                ) : (
+                  <select value={transferTo} onChange={e => setTransferTo(e.target.value)}
+                    style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #dde8dd', borderRadius: 10, fontSize: 14, background: '#fafcfa', outline: 'none', color: transferTo ? '#1a4731' : '#888', cursor: 'pointer' }}>
+                    <option value="">Choose</option>
+                    {fseList.map((fse, i) => <option key={i} value={fse}>{fse}</option>)}
+                  </select>
+                )}
               </div>
 
               <div style={{ marginBottom: 14 }}>
