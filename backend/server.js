@@ -7,13 +7,18 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:3005',
-    'https://vegavruddhi-tl-tide-bt-eht2.vercel.app',
-    'https://vegavruddhi-tl-tide-bt.vercel.app',
-    /\.vercel\.app$/  // allow all vercel preview deployments
-  ],
+  origin: function(origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    // Allow all vercel.app domains and localhost
+    if (
+      origin.endsWith('.vercel.app') ||
+      origin.startsWith('http://localhost')
+    ) {
+      return callback(null, true);
+    }
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true
 }));
 app.use(express.json());
