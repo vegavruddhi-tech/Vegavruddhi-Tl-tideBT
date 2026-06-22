@@ -5,7 +5,16 @@ require('dotenv').config();
 
 const app = express();
 
-// Middleware
+// ── CORS — must be before all routes ──────────────────────────────────────
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization,Content-Type,Accept');
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
 app.use(cors());
 app.use(express.json());
 
