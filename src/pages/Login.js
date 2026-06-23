@@ -15,6 +15,8 @@ export default function Login() {
     const tokenFromURL = params.get('token');
 
     if (tokenFromURL) {
+      // Clear any previous session before saving new token
+      localStorage.clear();
       localStorage.setItem('token', tokenFromURL);
       navigate('/dashboard');
       return;
