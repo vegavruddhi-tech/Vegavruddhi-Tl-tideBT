@@ -199,7 +199,7 @@ export default function Dashboard() {
       headers: { Authorization: 'Bearer ' + token }
     })
       .then(r => r.json())
-      .then(data => setReceivedPayments(data.payments || data || []))
+      .then(data => setReceivedPayments(Array.isArray(data.payments) ? data.payments : Array.isArray(data) ? data : []))
       .catch(() => setReceivedPayments([]));
   }, [token, tl]);
 
