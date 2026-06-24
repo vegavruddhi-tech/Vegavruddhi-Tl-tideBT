@@ -18,10 +18,34 @@ app.use((req, res, next) => {
 app.use(cors());
 app.use(express.json());
 
-// MongoDB Connection
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ MongoDB connected - TL TideBT'))
-  .catch(err => console.error('❌ MongoDB connection error:', err.message));
+// ── MongoDB Connection — cached for Vercel serverless cold starts ──────────
+let isConnected = false;
+
+async function connectDB() {
+  if (isConnected && mongoose.connection.readyState === 1) return;
+  try {
+    await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+    });
+    isConnected = true;
+    console.log('✅ MongoDB connected - TL TideBT');
+  } catch (err) {
+    isConnected = false;
+    console.error('❌ MongoDB connection error:', err.message);
+    throw err;
+  }
+}
+
+// Ensure DB is connected before every request (critical for Vercel cold starts)
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    res.status(503).json({ message: 'Database connection failed', error: err.message });
+  }
+});
 
 // Routes
 const tlRoutes = require('./routes/tl');
