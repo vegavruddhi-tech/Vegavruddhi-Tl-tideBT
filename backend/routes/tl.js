@@ -1611,31 +1611,57 @@ router.get('/tidebt-annual-bt-summary', verifyToken, async (req, res) => {
       masterDocs.map(m => (m.merchantNumber || '').trim()).filter(Boolean)
     )];
 
-    if (merchantNumbers.length === 0) {
-      return res.json({ success: true, months: [] });
-    }
+    // Build lead name patterns for historical data (churned merchants)
+    const nameParts = tlName.split(' ').filter(Boolean);
+    const firstName = nameParts[0] || tlName;
+    const lastInitial = nameParts[1] ? nameParts[1][0] : '';
+    const leadPatterns = [
+      new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i'),
+      new RegExp(`^\\s*${escape(firstName)}\\s*${lastInitial ? escape(lastInitial) : ''}`, 'i'),
+      new RegExp(`^\\s*${escape(firstName)}\\s*$`, 'i')
+    ];
 
     const allCollections = (await db.listCollections().toArray()).map(c => c.name);
     const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     const shortYear = yearStr.slice(-2);
 
+    const MONTH_ABBR = {
+      'JANUARY': 'JAN', 'FEBRUARY': 'FEB', 'MARCH': 'MAR', 'APRIL': 'APR',
+      'MAY': 'MAY', 'JUNE': 'JUN', 'JULY': 'JUL', 'AUGUST': 'AUG',
+      'SEPTEMBER': 'SEP', 'OCTOBER': 'OCT', 'NOVEMBER': 'NOV', 'DECEMBER': 'DEC'
+    };
+
     const monthResults = await Promise.all(MONTH_NAMES.map(async (monthName) => {
       const monthUpper = monthName.toUpperCase();
+      const monthAbbr  = MONTH_ABBR[monthUpper] || monthUpper;
       const btCols = allCollections.filter(c => c.toUpperCase().startsWith('BT_TL_CONNECT'));
       const tlCols = allCollections.filter(c => c.toUpperCase().includes('TL_CONNECT') && !c.toUpperCase().startsWith('BT_TL_CONNECT'));
       const candidates = [...btCols, ...tlCols];
+      const matchesMonth = (cu) => cu.includes(monthUpper) || cu.includes(monthAbbr);
 
       let colName = candidates.find(c => {
         const cu = c.toUpperCase();
-        return cu.includes(monthUpper) && (cu.includes(yearStr) || cu.includes(shortYear));
+        return matchesMonth(cu) && (cu.includes(yearStr) || cu.includes(shortYear));
       });
-      if (!colName) colName = candidates.find(c => c.toUpperCase().includes(monthUpper));
-
+      if (!colName) colName = candidates.find(c => matchesMonth(c.toUpperCase()));
       if (!colName) return { month: monthName, btAmount: 0, rewardPassCount: 0, passLiveCount: 0, collectionFound: false };
 
-      const btDocs = await db.collection(colName).find({
-        merchantNumber: { $in: merchantNumbers }
-      }).project({ stage3: 1, rewardPassPro: 1, priorityPassPro: 1, passLive: 1 }).toArray();
+      const [byMerchant, byLead] = await Promise.all([
+        merchantNumbers.length > 0
+          ? db.collection(colName).find({ merchantNumber: { $in: merchantNumbers } })
+              .project({ stage3: 1, rewardPassPro: 1, priorityPassPro: 1, passLive: 1, merchantNumber: 1 }).toArray()
+          : Promise.resolve([]),
+        db.collection(colName).find({
+          $or: leadPatterns.map(p => ({ lead: p }))
+        }).project({ stage3: 1, rewardPassPro: 1, priorityPassPro: 1, passLive: 1, merchantNumber: 1 }).toArray()
+      ]);
+
+      const seen = new Set();
+      const btDocs = [];
+      [...byMerchant, ...byLead].forEach(r => {
+        const key = r.merchantNumber || String(r._id);
+        if (!seen.has(key)) { seen.add(key); btDocs.push(r); }
+      });
 
       let btAmount = 0, rewardPassCount = 0, passLiveCount = 0;
       btDocs.forEach(r => {
@@ -1646,7 +1672,7 @@ router.get('/tidebt-annual-bt-summary', verifyToken, async (req, res) => {
         if ((r.passLive || '').toLowerCase() === 'live') passLiveCount++;
       });
 
-      return { month: monthName, btAmount, rewardPassCount, passLiveCount, collectionFound: true };
+      return { month: monthName, btAmount, rewardPassCount, passLiveCount, collectionFound: true, totalDocs: btDocs.length };
     }));
 
     res.json({ success: true, year: yearStr, months: monthResults });
