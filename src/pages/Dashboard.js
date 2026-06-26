@@ -129,6 +129,56 @@ export default function Dashboard() {
   // Fund Left = My Fund - Used
   const fundLeft = myFund - (fundUsedRP + fee + withdrawFees);
 
+  // ── Previous month carry-forward (pure frontend — no extra API call) ──────
+  const prevMonthData = useMemo(() => {
+    const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const curMonthIdx  = selectedMonth ? MONTH_NAMES.indexOf(selectedMonth) : new Date().getMonth();
+    const curYear      = selectedYear  ? parseInt(selectedYear)             : new Date().getFullYear();
+    const prevMonthIdx = curMonthIdx === 0 ? 11 : curMonthIdx - 1;
+    const prevYear     = curMonthIdx === 0 ? curYear - 1 : curYear;
+    const prevMonthName = MONTH_NAMES[prevMonthIdx];
+
+    const isInPrevMonth = (dateRaw) => {
+      if (!dateRaw) return false;
+      const d = new Date(dateRaw);
+      if (isNaN(d)) return false;
+      return d.getFullYear() === prevYear && d.getMonth() === prevMonthIdx;
+    };
+
+    // Prev month received by TL
+    const prevReceived = receivedPayments
+      .filter(p => isInPrevMonth(p.createdAt))
+      .reduce((s, p) => s + (p.amount || 0), 0);
+
+    // Prev month self-transferred (TL kept for self)
+    const prevSelf = sentPayments
+      .filter(p => isInPrevMonth(p.createdAt) && (p.isSelf || p.transferToWhom === 'Self'))
+      .reduce((s, p) => s + (p.amount || 0), 0);
+
+    // Prev month sent to FSEs
+    const prevSentFSEs = sentPayments
+      .filter(p => isInPrevMonth(p.createdAt) && !p.isSelf && p.transferToWhom !== 'Self')
+      .reduce((s, p) => s + (p.amount || 0), 0);
+
+    // RP and withdraw from local data only (BT amount not available for prev months)
+    const prevRPForms  = rewardPassData.filter(r => isInPrevMonth(r.dateOfWorking || r.createdAt));
+    const prevRPCount  = prevRPForms.reduce((s, r) => s + (r.totalRPCount   || 0), 0);
+    const prevRP       = prevRPCount * 2500;
+    const prevWithdraw = myForms.filter(f => f.formType === 'mobikwik-withdraw' && isInPrevMonth(f.createdAt))
+      .reduce((s, f) => s + (f.withdrawAmount || 0), 0);
+    const prevWithdrawFees = Math.round(prevWithdraw * 0.03 * 100) / 100;
+    // NOTE: BT fee excluded — BT amount from BT_TL_CONNECT unavailable for prev months
+    const prevTotalUsed = prevRP + prevWithdrawFees;
+    const prevFundLeft  = prevSelf - prevTotalUsed;
+
+    return { prevMonthName, prevYear, prevReceived, prevSelf, prevSentFSEs, prevRPCount, prevRP, prevTotalUsed, prevFundLeft };
+  }, [receivedPayments, sentPayments, rewardPassData, myForms, selectedMonth, selectedYear]);
+
+  // ── Combined KPIs including carry-forward ─────────────────────────────────
+  const carryForward      = prevMonthData.prevFundLeft > 0 ? prevMonthData.prevFundLeft : 0;
+  const totalAvailable    = myFund + carryForward;
+  const fundLeftWithCarry = totalAvailable - totalUsed;
+
   // Load TL profile from existing backend
   useEffect(() => {
     if (!token) {
@@ -930,6 +980,26 @@ export default function Dashboard() {
           <div className="section-title" style={{ margin: 0 }}>💰 Received Fund Summary</div>
         </div>
 
+        {/* Previous month carry-forward banner */}
+        {prevMonthData.prevReceived > 0 && (
+          <div style={{ background: 'linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%)', borderRadius: 12, padding: '12px 14px', marginBottom: 12, border: '1.5px solid #a5d6a7', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#2e7d32', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                📅 {prevMonthData.prevMonthName} {prevMonthData.prevYear} — Carry Forward
+              </div>
+              <div style={{ fontSize: 11, color: '#555', marginTop: 3 }}>
+                Received ₹{prevMonthData.prevReceived.toLocaleString()} · Sent to FSEs ₹{prevMonthData.prevSentFSEs.toLocaleString()} · Used ₹{prevMonthData.prevTotalUsed.toLocaleString()}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 10, color: '#888', fontWeight: 600 }}>My Fund Remaining</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: prevMonthData.prevFundLeft >= 0 ? '#1565c0' : '#c62828' }}>
+                ₹{prevMonthData.prevFundLeft.toLocaleString()}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Section 1: Received Fund flow — 4 cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
           <div style={{ background: '#e6f4ea', borderRadius: 12, padding: '12px 10px', textAlign: 'center', border: '1.5px solid #2e7d3230' }}>
@@ -958,6 +1028,21 @@ export default function Dashboard() {
         {/* Section 2: My Fund Usage */}
         <div className="section-title" style={{ marginBottom: 12 }}>💸 My Fund Summary</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8, marginBottom: 8 }}>
+          <div style={{ background: '#fff8e1', borderRadius: 12, padding: '12px 10px', textAlign: 'center', border: '1.5px solid #f9a82530' }}>
+            <div style={{ fontSize: 8, fontWeight: 600, color: '#888', textTransform: 'uppercase', marginBottom: 2 }}>My Fund</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#f57f17' }}>₹{myFund.toLocaleString()}</div>
+            <div style={{ fontSize: 8, color: '#888', marginTop: 2 }}>Self-Transferred</div>
+          </div>
+          <div style={{ background: '#e8f5e9', borderRadius: 12, padding: '12px 10px', textAlign: 'center', border: '1.5px solid #43a04730' }}>
+            <div style={{ fontSize: 8, fontWeight: 600, color: '#888', textTransform: 'uppercase', marginBottom: 2 }}>Carry Forward</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#388e3c' }}>₹{carryForward.toLocaleString()}</div>
+            <div style={{ fontSize: 8, color: '#888', marginTop: 2 }}>From {prevMonthData.prevMonthName}</div>
+          </div>
+          <div style={{ background: '#f1f8e9', borderRadius: 12, padding: '12px 10px', textAlign: 'center', border: '1.5px solid #2e7d3240' }}>
+            <div style={{ fontSize: 8, fontWeight: 600, color: '#888', textTransform: 'uppercase', marginBottom: 2 }}>Total Available</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#1b5e20' }}>₹{totalAvailable.toLocaleString()}</div>
+            <div style={{ fontSize: 8, color: '#888', marginTop: 2 }}>My Fund + Carry</div>
+          </div>
           <div style={{ background: '#fff3e0', borderRadius: 12, padding: '12px 10px', textAlign: 'center', border: '1.5px solid #e6510030' }}>
             <div style={{ fontSize: 8, fontWeight: 600, color: '#888', textTransform: 'uppercase', marginBottom: 2 }}>BT</div>
             <div style={{ fontSize: 14, fontWeight: 800, color: '#e65100' }}>₹{fundUsedBT.toLocaleString()}</div>
@@ -976,10 +1061,10 @@ export default function Dashboard() {
             <div style={{ fontSize: 14, fontWeight: 800, color: '#ff6f00' }}>₹{totalUsed.toLocaleString()}</div>
             <div style={{ fontSize: 8, color: '#888', marginTop: 2 }}>RP + Fee + Withdraw</div>
           </div>
-          <div style={{ background: fundLeft >= 0 ? '#e3f2fd' : '#fdecea', borderRadius: 12, padding: '12px 10px', textAlign: 'center', border: `1.5px solid ${fundLeft >= 0 ? '#1565c030' : '#c6282830'}` }}>
+          <div style={{ background: fundLeftWithCarry >= 0 ? '#e3f2fd' : '#fdecea', borderRadius: 12, padding: '12px 10px', textAlign: 'center', border: `1.5px solid ${fundLeftWithCarry >= 0 ? '#1565c030' : '#c6282830'}` }}>
             <div style={{ fontSize: 8, fontWeight: 600, color: '#888', textTransform: 'uppercase', marginBottom: 2 }}>Fund Left</div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: fundLeft >= 0 ? '#1565c0' : '#c62828' }}>₹{fundLeft.toLocaleString()}</div>
-            <div style={{ fontSize: 8, color: '#888', marginTop: 2 }}>My Fund − Used</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: fundLeftWithCarry >= 0 ? '#1565c0' : '#c62828' }}>₹{fundLeftWithCarry.toLocaleString()}</div>
+            <div style={{ fontSize: 8, color: '#888', marginTop: 2 }}>Available − Used</div>
           </div>
         </div>
 
