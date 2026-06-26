@@ -40,6 +40,7 @@ export default function Dashboard() {
   const [expenseLoading, setExpenseLoading] = useState(false);
   const [btPerf, setBtPerf] = useState(null);
   const [myBtPerf, setMyBtPerf] = useState(null); // TL's personal BT
+  const [prevMyBtPerf, setPrevMyBtPerf] = useState(null); // Prev month TL personal BT
   const [amountRange, setAmountRange] = useState(''); // Amount range filter for Onboard tabs
   const [teamPerformance, setTeamPerformance] = useState(null);
 
@@ -160,19 +161,21 @@ export default function Dashboard() {
       .filter(p => isInPrevMonth(p.createdAt) && !p.isSelf && p.transferToWhom !== 'Self')
       .reduce((s, p) => s + (p.amount || 0), 0);
 
-    // RP and withdraw from local data only (BT amount not available for prev months)
-    const prevRPForms  = rewardPassData.filter(r => isInPrevMonth(r.dateOfWorking || r.createdAt));
-    const prevRPCount  = prevRPForms.reduce((s, r) => s + (r.totalRPCount   || 0), 0);
-    const prevRP       = prevRPCount * 2500;
+    // BT & RP from prevMyBtPerf API — accurate, same source as current month
+    const prevBT      = prevMyBtPerf ? (prevMyBtPerf.btAmount       || 0) : 0;
+    const prevRPCount = prevMyBtPerf ? (prevMyBtPerf.rewardPassCount || 0) : 0;
+    const prevRP      = prevRPCount * 2500;
+    const prevFee     = Math.round((prevBT > 10000 ? prevBT * 0.015 : 0) * 100) / 100;
+
+    // Mobikwik withdraw from local forms
     const prevWithdraw = myForms.filter(f => f.formType === 'mobikwik-withdraw' && isInPrevMonth(f.createdAt))
       .reduce((s, f) => s + (f.withdrawAmount || 0), 0);
     const prevWithdrawFees = Math.round(prevWithdraw * 0.03 * 100) / 100;
-    // NOTE: BT fee excluded — BT amount from BT_TL_CONNECT unavailable for prev months
-    const prevTotalUsed = prevRP + prevWithdrawFees;
+    const prevTotalUsed = prevRP + prevFee + prevWithdrawFees;
     const prevFundLeft  = prevSelf - prevTotalUsed;
 
-    return { prevMonthName, prevYear, prevReceived, prevSelf, prevSentFSEs, prevRPCount, prevRP, prevTotalUsed, prevFundLeft };
-  }, [receivedPayments, sentPayments, rewardPassData, myForms, selectedMonth, selectedYear]);
+    return { prevMonthName, prevYear, prevReceived, prevSelf, prevSentFSEs, prevBT, prevRPCount, prevRP, prevFee, prevTotalUsed, prevFundLeft };
+  }, [receivedPayments, sentPayments, prevMyBtPerf, myForms, selectedMonth, selectedYear]);
 
   // ── Combined KPIs including carry-forward ─────────────────────────────────
   const carryForward      = prevMonthData.prevFundLeft > 0 ? prevMonthData.prevFundLeft : 0;
@@ -306,6 +309,22 @@ export default function Dashboard() {
       .then(r => r.json())
       .then(data => { if (data.success) setMyBtPerf(data); else setMyBtPerf(null); })
       .catch(() => setMyBtPerf(null));
+
+    // Prev month personal BT — for accurate carry-forward Used calculation
+    const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const curMonthIdx  = selectedMonth ? MONTH_NAMES.indexOf(selectedMonth) : new Date().getMonth();
+    const curYear      = selectedYear  ? parseInt(selectedYear)             : new Date().getFullYear();
+    const prevMonthIdx = curMonthIdx === 0 ? 11 : curMonthIdx - 1;
+    const prevYear     = curMonthIdx === 0 ? curYear - 1 : curYear;
+    const prevParams   = new URLSearchParams();
+    prevParams.set('selectedMonth', MONTH_NAMES[prevMonthIdx]);
+    prevParams.set('selectedYear', String(prevYear));
+    fetch(`${PROFILE_API_BASE}/api/tl/tidebt-my-bt-performance?${prevParams.toString()}`, {
+      headers: { Authorization: 'Bearer ' + token }
+    })
+      .then(r => r.json())
+      .then(data => { if (data.success) setPrevMyBtPerf(data); else setPrevMyBtPerf(null); })
+      .catch(() => setPrevMyBtPerf(null));
   }, [token, tl, selectedMonth, selectedYear]);
 
   // Fetch team target & performance details
@@ -988,7 +1007,7 @@ export default function Dashboard() {
                 📅 {prevMonthData.prevMonthName} {prevMonthData.prevYear} — Carry Forward
               </div>
               <div style={{ fontSize: 11, color: '#555', marginTop: 3 }}>
-                Received ₹{prevMonthData.prevReceived.toLocaleString()} · Sent to FSEs ₹{prevMonthData.prevSentFSEs.toLocaleString()} · Used ₹{prevMonthData.prevTotalUsed.toLocaleString()}
+                Received ₹{prevMonthData.prevReceived.toLocaleString()} · BT ₹{prevMonthData.prevBT.toLocaleString()} · RP {prevMonthData.prevRPCount}×₹2,500 · Sent FSEs ₹{prevMonthData.prevSentFSEs.toLocaleString()} · Used ₹{prevMonthData.prevTotalUsed.toLocaleString()}
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
