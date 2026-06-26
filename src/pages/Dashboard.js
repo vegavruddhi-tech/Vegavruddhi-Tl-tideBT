@@ -188,6 +188,9 @@ export default function Dashboard() {
     const pastMonths = MONTH_NAMES.slice(0, curMonthIdx);
     if (pastMonths.length === 0) return 0;
 
+    const prevMonthIdx  = curMonthIdx - 1;
+    const prevMonthName = MONTH_NAMES[prevMonthIdx];
+
     let totalCarry = 0;
     pastMonths.forEach(monthName => {
       // Self-transferred (TL's own fund) in this month
@@ -199,10 +202,20 @@ export default function Dashboard() {
         })
         .reduce((s, p) => s + (p.amount || 0), 0);
 
-      // BT & RP from annual summary
-      const monthData = annualBtSummary?.months?.find(m => m.month === monthName);
-      const monthBT   = monthData ? (monthData.btAmount       || 0) : 0;
-      const monthRP   = monthData ? (monthData.rewardPassCount || 0) : 0;
+      if (monthSelf === 0) return; // no fund kept, skip
+
+      let monthBT = 0, monthRP = 0;
+
+      if (monthName === prevMonthName && prevMyBtPerf) {
+        // Use accurate prevMyBtPerf for the immediately previous month
+        monthBT = prevMyBtPerf.btAmount       || 0;
+        monthRP = prevMyBtPerf.rewardPassCount || 0;
+      } else if (annualBtSummary?.months) {
+        const monthData = annualBtSummary.months.find(m => m.month === monthName);
+        monthBT = monthData ? (monthData.btAmount       || 0) : 0;
+        monthRP = monthData ? (monthData.rewardPassCount || 0) : 0;
+      }
+
       const monthRPCost = monthRP * 2500;
       const monthFee    = Math.round((monthBT > 10000 ? monthBT * 0.015 : 0) * 100) / 100;
 
@@ -221,7 +234,7 @@ export default function Dashboard() {
     });
 
     return totalCarry;
-  }, [sentPayments, annualBtSummary, myForms, selectedMonth, selectedYear]);
+  }, [sentPayments, prevMyBtPerf, annualBtSummary, myForms, selectedMonth, selectedYear]);
 
   const totalAvailable    = myFund + carryForward;
   const fundLeftWithCarry = totalAvailable - totalUsed;
