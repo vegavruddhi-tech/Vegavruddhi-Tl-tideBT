@@ -21,19 +21,29 @@ const findConnectCollection = async (db, selectedMonth, selectedYear) => {
   const yearStr = selectedYear ? String(selectedYear) : null;
   const shortYear = yearStr ? yearStr.slice(-2) : null;
 
+  // Month abbreviation map — handles both full names and 3-letter abbreviations
+  const MONTH_ABBR = {
+    'JANUARY': 'JAN', 'FEBRUARY': 'FEB', 'MARCH': 'MAR', 'APRIL': 'APR',
+    'MAY': 'MAY', 'JUNE': 'JUN', 'JULY': 'JUL', 'AUGUST': 'AUG',
+    'SEPTEMBER': 'SEP', 'OCTOBER': 'OCT', 'NOVEMBER': 'NOV', 'DECEMBER': 'DEC'
+  };
+  const monthAbbr = MONTH_ABBR[monthUpper] || monthUpper;
+
   // Search BT_TL_CONNECT first (new format), then TL_CONNECT / tl_connect (old format)
   const btCollections = allCollections.filter(c => c.toUpperCase().startsWith('BT_TL_CONNECT'));
   const tlCollections = allCollections.filter(c => c.toUpperCase().includes('TL_CONNECT') && !c.toUpperCase().startsWith('BT_TL_CONNECT'));
   const candidateCollections = [...btCollections, ...tlCollections];
 
+  const matchesMonth = (cu) => cu.includes(monthUpper) || cu.includes(monthAbbr);
+
   if (yearStr) {
     const match = candidateCollections.find(c => {
       const cu = c.toUpperCase();
-      return cu.includes(monthUpper) && (cu.includes(yearStr) || cu.includes(shortYear));
+      return matchesMonth(cu) && (cu.includes(yearStr) || cu.includes(shortYear));
     });
     if (match) return match;
   }
-  const match = candidateCollections.find(c => c.toUpperCase().includes(monthUpper));
+  const match = candidateCollections.find(c => matchesMonth(c.toUpperCase()));
   if (match) return match;
 
   return null;
