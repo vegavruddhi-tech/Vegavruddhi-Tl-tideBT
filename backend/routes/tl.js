@@ -1579,4 +1579,71 @@ router.get('/tidebt-my-merchants', verifyToken, async (req, res) => {
   }
 });
 
+// GET /api/tl/tidebt-annual-bt-summary
+// Returns BT amount + RP count per month for the year — used for cumulative carry-forward
+router.get('/tidebt-annual-bt-summary', verifyToken, async (req, res) => {
+  try {
+    const tl = await TeamLead.findById(req.user.id).select('name email');
+    if (!tl) return res.status(404).json({ message: 'TL not found' });
+
+    const db     = mongoose.connection.db;
+    const tlName = tl.name.trim();
+    const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const { year } = req.query;
+    const yearStr  = year || String(new Date().getFullYear());
+
+    // Get TL's own merchant numbers from bt_master (personal BT — exact name match only)
+    const masterDocs = await db.collection('bt_master').find({
+      fseName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*\\d*\\s*$`, 'i') }
+    }).project({ merchantNumber: 1 }).toArray();
+
+    const merchantNumbers = [...new Set(
+      masterDocs.map(m => (m.merchantNumber || '').trim()).filter(Boolean)
+    )];
+
+    if (merchantNumbers.length === 0) {
+      return res.json({ success: true, months: [] });
+    }
+
+    const allCollections = (await db.listCollections().toArray()).map(c => c.name);
+    const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const shortYear = yearStr.slice(-2);
+
+    const monthResults = await Promise.all(MONTH_NAMES.map(async (monthName) => {
+      const monthUpper = monthName.toUpperCase();
+      const btCols = allCollections.filter(c => c.toUpperCase().startsWith('BT_TL_CONNECT'));
+      const tlCols = allCollections.filter(c => c.toUpperCase().includes('TL_CONNECT') && !c.toUpperCase().startsWith('BT_TL_CONNECT'));
+      const candidates = [...btCols, ...tlCols];
+
+      let colName = candidates.find(c => {
+        const cu = c.toUpperCase();
+        return cu.includes(monthUpper) && (cu.includes(yearStr) || cu.includes(shortYear));
+      });
+      if (!colName) colName = candidates.find(c => c.toUpperCase().includes(monthUpper));
+
+      if (!colName) return { month: monthName, btAmount: 0, rewardPassCount: 0, passLiveCount: 0, collectionFound: false };
+
+      const btDocs = await db.collection(colName).find({
+        merchantNumber: { $in: merchantNumbers }
+      }).project({ stage3: 1, rewardPassPro: 1, priorityPassPro: 1, passLive: 1 }).toArray();
+
+      let btAmount = 0, rewardPassCount = 0, passLiveCount = 0;
+      btDocs.forEach(r => {
+        const parseNum = v => { const n = parseFloat(String(v || '0').replace(/,/g, '')); return isNaN(n) ? 0 : n; };
+        btAmount += parseNum(r.stage3 || r.Stage_3 || r['Stage-3']);
+        const rp = (r.rewardPassPro || r.priorityPassPro || '').toLowerCase();
+        if (rp === 'active') rewardPassCount++;
+        if ((r.passLive || '').toLowerCase() === 'live') passLiveCount++;
+      });
+
+      return { month: monthName, btAmount, rewardPassCount, passLiveCount, collectionFound: true };
+    }));
+
+    res.json({ success: true, year: yearStr, months: monthResults });
+  } catch (err) {
+    console.error('TL Annual BT summary error:', err.message);
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;
