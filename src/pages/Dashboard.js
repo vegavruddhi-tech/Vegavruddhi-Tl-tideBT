@@ -1349,11 +1349,13 @@ export default function Dashboard() {
             </div>
           ) : (
             <div style={{ background: '#fff', borderRadius: 12, border: '1.5px solid #e8f3ed', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 560 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 640 }}>
                 <thead>
                   <tr style={{ background: '#f5faf7' }}>
                     <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: '#1a4731', borderBottom: '2px solid #e8f3ed' }}>FSE</th>
                     <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#2e7d32', borderBottom: '2px solid #e8f3ed' }}>Recd</th>
+                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#388e3c', borderBottom: '2px solid #e8f3ed' }}>Carry</th>
+                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#1b5e20', borderBottom: '2px solid #e8f3ed' }}>Avail</th>
                     <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#e65100', borderBottom: '2px solid #e8f3ed' }}>BT</th>
                     <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#0369a1', borderBottom: '2px solid #e8f3ed' }}>RP#</th>
                     <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#7c3aed', borderBottom: '2px solid #e8f3ed' }}>RP</th>
@@ -1368,6 +1370,8 @@ export default function Dashboard() {
                     <tr key={i} style={{ borderBottom: '1px solid #f0f0f0', background: i % 2 === 0 ? '#fff' : '#fafcfa' }}>
                       <td style={{ padding: '8px 10px', fontWeight: 700, color: '#1a4731', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fse.fseName}</td>
                       <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#2e7d32' }}>₹{fse.received?.toLocaleString()}</td>
+                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#388e3c' }}>₹{(fse.carryForward || 0).toLocaleString()}</td>
+                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#1b5e20' }}>₹{(fse.totalAvailable || fse.received || 0).toLocaleString()}</td>
                       <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#e65100' }}>₹{fse.usedBT?.toLocaleString()}</td>
                       <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#0369a1' }}>{fse.rpCount || 0}</td>
                       <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>₹{fse.usedRP?.toLocaleString()}</td>
