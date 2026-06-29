@@ -820,13 +820,95 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     }
 
     // Get payments (received by FSEs) and withdraw forms
-    let payments = await db.collection('TideBT_Payments').find({}).toArray();
+    const allPayments = await db.collection('TideBT_Payments').find({}).toArray();
+    let payments = allPayments;
     let withdrawForms = await db.collection('TideBT_Mobikwik')
       .find({ formType: 'mobikwik-withdraw' }).toArray();
 
     if (dateFilter || selectedYear || selectedMonth) {
       withdrawForms = filterByDate(withdrawForms, 'createdAt');
-      payments      = filterByDate(payments, 'createdAt');
+      payments      = filterByDate(allPayments, 'createdAt');
+    }
+
+    // ── Cumulative carry-forward per FSE for all months before selectedMonth ──
+    const allCollections = (await db.listCollections().toArray()).map(c => c.name);
+    const MONTH_ABBR_MAP = {
+      'JANUARY': 'JAN', 'FEBRUARY': 'FEB', 'MARCH': 'MAR', 'APRIL': 'APR',
+      'MAY': 'MAY', 'JUNE': 'JUN', 'JULY': 'JUL', 'AUGUST': 'AUG',
+      'SEPTEMBER': 'SEP', 'OCTOBER': 'OCT', 'NOVEMBER': 'NOV', 'DECEMBER': 'DEC'
+    };
+    const findBTCol = (monthName, yearStr) => {
+      const mu = monthName.toUpperCase();
+      const abbr = MONTH_ABBR_MAP[mu] || mu;
+      const sy = yearStr ? yearStr.slice(-2) : null;
+      const btCols = allCollections.filter(c => c.toUpperCase().startsWith('BT_TL_CONNECT'));
+      const tlCols = allCollections.filter(c => c.toUpperCase().includes('TL_CONNECT') && !c.toUpperCase().startsWith('BT_TL_CONNECT'));
+      const candidates = [...btCols, ...tlCols];
+      const mm = cu => cu.includes(mu) || cu.includes(abbr);
+      if (yearStr) { const m = candidates.find(c => { const cu = c.toUpperCase(); return mm(cu) && (cu.includes(yearStr) || (sy && cu.includes(sy))); }); if (m) return m; }
+      return candidates.find(c => mm(c.toUpperCase())) || null;
+    };
+
+    const fseCarryMap = {}; // fseName.toLowerCase() → cumulative carry
+    if (selectedMonth && selectedYear) {
+      const curYear     = parseInt(selectedYear);
+      const curMonthIdx = MONTHS.indexOf(selectedMonth);
+      if (curMonthIdx > 0) {
+        // Build number→FSE map from bt_master for carry calculation
+        const numToFSEForCarry = {};
+        allMasterDocs.forEach(m => {
+          const num = (m.merchantNumber || '').trim();
+          const n   = (m.fseName || '').trim().toLowerCase();
+          if (num && n) numToFSEForCarry[num] = n;
+        });
+
+        for (let i = 0; i < curMonthIdx; i++) {
+          const monthName = MONTHS[i];
+          const colName   = findBTCol(monthName, String(curYear));
+
+          // Payments received this month per FSE
+          const mReceivedMap = {};
+          allPayments.forEach(p => {
+            if (!p.createdAt) return;
+            const d = new Date(p.createdAt);
+            if (d.getFullYear() !== curYear || MONTHS[d.getMonth()] !== monthName) return;
+            const n = (p.transferTo || '').trim().toLowerCase();
+            if (fseNames.some(f => f.toLowerCase() === n)) {
+              mReceivedMap[n] = (mReceivedMap[n] || 0) + (p.amount || 0);
+            }
+          });
+
+          // BT/RP per FSE from this month's collection
+          const mBTMap = {}, mRPMap = {};
+          if (colName) {
+            const allNums = [...new Set(Object.values(fseMerchantNums).flat())];
+            if (allNums.length > 0) {
+              const mDocs = await db.collection(colName).find({ merchantNumber: { $in: allNums } })
+                .project({ merchantNumber: 1, stage3: 1, rewardPassPro: 1, priorityPassPro: 1 }).toArray();
+              mDocs.forEach(r => {
+                const num  = (r.merchantNumber || '').trim();
+                const fse  = (numToFSEForCarry[num] || '').toLowerCase();
+                if (!fse) return;
+                mBTMap[fse] = (mBTMap[fse] || 0) + (parseFloat(String(r.stage3 || '0').replace(/,/g,'')) || 0);
+                if ((r.rewardPassPro || r.priorityPassPro || '').toLowerCase() === 'active') mRPMap[fse] = (mRPMap[fse] || 0) + 1;
+              });
+            }
+          }
+
+          // Accumulate per FSE
+          fseNames.forEach(fseName => {
+            const fl = fseName.toLowerCase();
+            const recv = mReceivedMap[fl] || 0;
+            if (recv === 0) return;
+            const bt   = mBTMap[fl]  || 0;
+            const rp   = mRPMap[fl]  || 0;
+            const rpCost = rp * 2500;
+            const fee  = Math.round((bt > 10000 ? bt * 0.015 : 0) * 100) / 100;
+            const left = recv - (rpCost + fee);
+            if (left > 0) fseCarryMap[fl] = (fseCarryMap[fl] || 0) + left;
+          });
+        }
+      }
     }
 
     // Build tracker per FSE using BT_TL_CONNECT for BT/RP
@@ -857,8 +939,10 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
       const withdrawAmount = fseWithdraws.reduce((sum, f) => sum + (f.withdrawAmount || 0), 0);
       const withdrawFee    = Math.round(withdrawAmount * 0.03 * 100) / 100;
 
-      const fundLeft = received - (usedRP + fee + withdrawFee);
-      return { fseName, received, usedBT, rpCount, usedRP, fee, withdrawAmount, withdrawFee, fundLeft };
+      const carryFwd     = fseCarryMap[fseNameLower] || 0;
+      const totalAvailable = received + carryFwd;
+      const fundLeft = totalAvailable - (usedRP + fee + withdrawFee);
+      return { fseName, received, carryForward: carryFwd, totalAvailable, usedBT, rpCount, usedRP, fee, withdrawAmount, withdrawFee, fundLeft };
     });
 
     res.json({ success: true, tracker });
