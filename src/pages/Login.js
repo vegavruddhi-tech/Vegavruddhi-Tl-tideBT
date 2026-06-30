@@ -117,6 +117,20 @@ export default function Login() {
               <div ref={googleBtnRef}></div>
             </div>
           )}
+
+          <div style={{ marginTop: 24 }}>
+            <a
+              href="https://team-leader-gamma.vercel.app/"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                fontSize: 13, color: '#4a7060', textDecoration: 'none',
+                padding: '8px 16px', borderRadius: 8, border: '1px solid #c8ddd3',
+                background: '#f0f7f3', fontWeight: 600
+              }}
+            >
+              ← Back to Main TL Dashboard
+            </a>
+          </div>
         </div>
       </div>
     </>
