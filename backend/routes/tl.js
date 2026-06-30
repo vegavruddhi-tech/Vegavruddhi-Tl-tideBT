@@ -316,9 +316,9 @@ router.get('/tidebt-received-payments', verifyToken, async (req, res) => {
     accessRecords.forEach(r => { if (r.tlName) nameSet.add(r.tlName.trim()); });
 
     // Also check if TL appears as an FSE in TideBT_Access (fseName field)
-    // e.g. TL "Niteesh" may have fseName "Niteesh Kumar Saroj" 
+    // Use exact match only — prefix match would cause "Niteesh" to pick up "Niteesh Kumar Saroj" (an FSE)
     const fseAccessRecords = await db.collection('TideBT_Access').find({
-      fseName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*`, 'i') }
+      fseName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') }
     }).toArray();
     fseAccessRecords.forEach(r => { if (r.fseName) nameSet.add(r.fseName.trim()); });
 
@@ -336,9 +336,16 @@ router.get('/tidebt-received-payments', verifyToken, async (req, res) => {
 
     const nameArray = [...nameSet];
     const payments = await TideBTPayments.find({
-      $or: nameArray.map(n => ({
-        transferTo: { $regex: new RegExp(`^\\s*${escape(n)}\\s*$`, 'i') }
-      }))
+      $and: [
+        {
+          $or: nameArray.map(n => ({
+            transferTo: { $regex: new RegExp(`^\\s*${escape(n)}\\s*$`, 'i') }
+          }))
+        },
+        // Only TL/Manager type payments — exclude FSE-type payments
+        // This prevents mixing Niteesh's FSE received fund with his TL received fund
+        { transferToWhom: { $not: { $regex: /^FSE|^FSC/i } } }
+      ]
     }).sort({ createdAt: -1 }).toArray();
 
     const normalizedPayments = payments.map(p => ({ ...p, createdAt: p.createdAt || null }));
@@ -692,8 +699,11 @@ router.get('/tidebt-sent-payments', verifyToken, async (req, res) => {
       }).toArray();
     }
     accessRecs.forEach(r => { if (r.tlName) tlNameSet.add(r.tlName.trim()); });
+    // IMPORTANT: Use exact match ($ at end) — prefix match would cause "Niteesh" TL
+    // to pick up "Niteesh Kumar Saroj" FSE, incorrectly marking FSE payments as TL self-transfers
+    // which inflates carry-forward in the Fund Summary.
     const fseRecs = await db.collection('TideBT_Access').find({
-      fseName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*`, 'i') }
+      fseName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') }
     }).toArray();
     fseRecs.forEach(r => { if (r.fseName) tlNameSet.add(r.fseName.trim()); });
     const tlEmail = (tl.email || tl.emailId || '').trim();
@@ -1121,10 +1131,14 @@ router.get('/tidebt-my-bt-performance', verifyToken, async (req, res) => {
     // IMPORTANT: Do NOT match by email in bt_master — TL email may match FSE records
     // (e.g. TL "Niteesh" email = nksaroj2001@gmail.com also belongs to FSE "Niteesh Kumar Saroj")
     // Only use exact fseName match for TL's personal merchants
+    // ALSO: Exclude merchants where tl field = TL's short name (those are FSE merchants under this TL)
+    const tlShortName = tlName.split(' ')[0]; // e.g. "Niteesh" from "Niteesh Kumar Saroj"
     const [masterDocs, merchantDocs, formMerchantDocs] = await Promise.all([
       // bt_master — exact fseName match only (NO email match for TL personal BT)
+      // Also exclude merchants where tl = tlShortName (those are FSE records, not TL personal)
       db.collection('bt_master').find({
-        fseName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*\\d*\\s*$`, 'i') }
+        fseName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*\\d*\\s*$`, 'i') },
+        tl: { $not: { $regex: new RegExp(`^\\s*${escape(tlShortName)}\\s*$`, 'i') } }
       }).project({ merchantNumber: 1 }).toArray(),
 
       db.collection('TideBT_Merchants').find({
