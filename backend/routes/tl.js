@@ -1165,7 +1165,6 @@ router.get('/tidebt-my-bt-performance', verifyToken, async (req, res) => {
       ...formMerchantDocs.map(m => (m.merchantNumber || '').trim())
     ].filter(Boolean))];
 
-    const { selectedMonth, selectedYear } = req.query;
     const collectionName = await findConnectCollection(db, selectedMonth, selectedYear);
 
     const empty = { success: true, btAmount: 0, btGap: 0, todaysBT: 0, yesterdaysBT: 0,
