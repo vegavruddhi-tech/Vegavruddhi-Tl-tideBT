@@ -6,6 +6,7 @@ const { OAuth2Client } = require('google-auth-library');
 const TeamLead = require('../models/TeamLead');
 const TideBTFormResponse = require('../models/TideBTFormResponse');
 const verifyToken = require('../middleware/auth');
+const { cacheGet, cacheSet, cacheKey, cacheInvalidatePattern } = require('../utils/cache');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -173,6 +174,10 @@ router.get('/tidebt-fses', verifyToken, async (req, res) => {
     const tl = await TeamLead.findById(req.user.id).select('name');
     if (!tl) return res.status(404).json({ message: 'Team Lead not found' });
 
+    const ck = cacheKey('TL_FSES', tl._id.toString());
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
+
     const db = mongoose.connection.db;
     const TideBTAccess = db.collection('TideBT_Access');
 
@@ -199,7 +204,9 @@ router.get('/tidebt-fses', verifyToken, async (req, res) => {
     // Return unique FSE names
     const fseNames = [...new Set(records.map(r => r.fseName).filter(Boolean))];
 
-    res.json({ fses: fseNames });
+    const result = { fses: fseNames };
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     console.error('TideBT FSEs error:', err.message);
     res.status(500).json({ message: err.message });
@@ -211,6 +218,10 @@ router.get('/tidebt-team-forms', verifyToken, async (req, res) => {
   try {
     const tl = await TeamLead.findById(req.user.id).select('name');
     if (!tl) return res.status(404).json({ message: 'Team Lead not found' });
+
+    const ck = cacheKey('TL_TEAM_FORMS', tl._id.toString());
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
 
     const db = mongoose.connection.db;
     const TideBTAccess = db.collection('TideBT_Access');
@@ -231,7 +242,9 @@ router.get('/tidebt-team-forms', verifyToken, async (req, res) => {
     const fseNames = [...new Set(records.map(r => r.fseName).filter(Boolean))];
 
     if (fseNames.length === 0) {
-      return res.json([]);
+      const result = [];
+      await cacheSet(ck, result);
+      return res.json(result);
     }
 
     // Query both TideBT Form Responses and TideBT_Mobikwik where employeeName is in FSE names
@@ -245,7 +258,9 @@ router.get('/tidebt-team-forms', verifyToken, async (req, res) => {
 
     const allForms = [...onboardForms, ...mobikwikForms].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    res.json(allForms);
+    const result = allForms;
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     console.error('TideBT team forms error:', err.message);
     res.status(500).json({ message: err.message });
@@ -289,6 +304,10 @@ router.get('/tidebt-received-payments', verifyToken, async (req, res) => {
   try {
     const tl = await TeamLead.findById(req.user.id).select('name email emailId');
     if (!tl) return res.status(404).json({ message: 'Team Lead not found' });
+
+    const ck = cacheKey('TL_PAYMENTS', tl._id.toString());
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
 
     const db = mongoose.connection.db;
     const TideBTPayments = db.collection('TideBT_Payments');
@@ -351,7 +370,9 @@ router.get('/tidebt-received-payments', verifyToken, async (req, res) => {
     const normalizedPayments = payments.map(p => ({ ...p, createdAt: p.createdAt || null }));
     console.log(`[TL Payments] TL: "${tlName}", names searched: ${JSON.stringify(nameArray)}, found: ${payments.length}`);
 
-    res.json(normalizedPayments);
+    const result = normalizedPayments;
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     console.error('Received payments error:', err.message);
     res.status(500).json({ message: err.message });
@@ -405,6 +426,10 @@ router.get('/tidebt-my-forms', verifyToken, async (req, res) => {
     const tl = await TeamLead.findById(req.user.id).select('email name');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
+    const ck = cacheKey('TL_MY_FORMS', tl._id.toString());
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
+
     const db = mongoose.connection.db;
     const tlName = tl.name.trim();
     const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -428,7 +453,9 @@ router.get('/tidebt-my-forms', verifyToken, async (req, res) => {
 
     const allForms = [...onboardForms, ...mobikwikForms].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    res.json(allForms);
+    const result = allForms;
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -458,6 +485,9 @@ router.post('/tidebt-daily-visit', verifyToken, async (req, res) => {
       onboardingStatus,
       merchantEmailId
     });
+
+    await cacheInvalidatePattern(`TL_MY_FORMS:${tl._id.toString()}*`);
+    await cacheInvalidatePattern(`TL_TEAM_FORMS:${tl._id.toString()}*`);
 
     res.status(201).json({ message: 'Daily visit form submitted', form: formResponse });
   } catch (err) {
@@ -501,8 +531,12 @@ router.get('/tidebt-my-target', verifyToken, async (req, res) => {
     const tl = await TeamLead.findById(req.user.id).select('name');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
-    const db = mongoose.connection.db;
     const { month, year } = req.query;
+    const ck = cacheKey('TL_TARGET', tl._id.toString(), month, year);
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
+
+    const db = mongoose.connection.db;
     const query = { targetFor: { $regex: new RegExp(tl.name.trim(), 'i') } };
     if (month) query.month = month;
     if (year) query.year = parseInt(year);
@@ -510,7 +544,11 @@ router.get('/tidebt-my-target', verifyToken, async (req, res) => {
     // Get ALL targets and sum them
     const targets = await db.collection('TideBT_Targets').find(query).toArray();
     
-    if (targets.length === 0) return res.json({ success: true, target: null });
+    if (targets.length === 0) {
+      const result = { success: true, target: null };
+      await cacheSet(ck, result);
+      return res.json(result);
+    }
 
     const target = {
       btTarget: targets.reduce((sum, t) => sum + (t.btTarget || 0), 0),
@@ -519,7 +557,9 @@ router.get('/tidebt-my-target', verifyToken, async (req, res) => {
       year: year || targets[0].year
     };
 
-    res.json({ success: true, target });
+    const result = { success: true, target };
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -530,6 +570,12 @@ router.get('/tidebt-team-performance', verifyToken, async (req, res) => {
   try {
     const tl = await TeamLead.findById(req.user.id).select('name');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
+
+    const selectedMonth = req.query.selectedMonth || req.query.month;
+    const selectedYear = req.query.selectedYear || req.query.year;
+    const ck = cacheKey('TL_TEAM_PERF', tl._id.toString(), selectedMonth, selectedYear);
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
 
     const db = mongoose.connection.db;
     const tlName = tl.name.trim();
@@ -548,9 +594,6 @@ router.get('/tidebt-team-performance', verifyToken, async (req, res) => {
       }).toArray();
     }
     const fseNames = [...new Set(records.map(r => r.fseName).filter(Boolean))];
-
-    const selectedMonth = req.query.selectedMonth || req.query.month;
-    const selectedYear = req.query.selectedYear || req.query.year;
 
     // Fetch TL target (Team Target)
     const tlTargetQuery = {
@@ -629,12 +672,14 @@ router.get('/tidebt-team-performance', verifyToken, async (req, res) => {
       };
     });
 
-    res.json({
+    const result = {
       success: true,
       teamTarget,
       btCompleted: teamBtCompleted,
       fseData
-    });
+    };
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     console.error('TL team performance error:', err.message);
     res.status(500).json({ message: err.message });
@@ -671,6 +716,9 @@ router.post('/tidebt-mobikwik-withdraw', verifyToken, async (req, res) => {
 
     await db.collection('TideBT_Mobikwik').insertOne(doc);
 
+    await cacheInvalidatePattern(`TL_MY_FORMS:${tl._id.toString()}*`);
+    await cacheInvalidatePattern(`TL_TEAM_FORMS:${tl._id.toString()}*`);
+
     res.status(201).json({ message: 'Mobikwik withdraw form submitted', form: doc });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -682,6 +730,10 @@ router.get('/tidebt-sent-payments', verifyToken, async (req, res) => {
   try {
     const tl = await TeamLead.findById(req.user.id).select('name email emailId');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
+
+    const ck = cacheKey('TL_SENT_PAYMENTS', tl._id.toString());
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
 
     const db = mongoose.connection.db;
     const tlName = tl.name.trim();
@@ -736,7 +788,9 @@ router.get('/tidebt-sent-payments', verifyToken, async (req, res) => {
       };
     });
 
-    res.json({ success: true, payments: enriched });
+    const result = { success: true, payments: enriched };
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -748,6 +802,11 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
   try {
     const tl = await TeamLead.findById(req.user.id).select('name');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
+
+    const { dateFilter, selectedYear, selectedMonth } = req.query;
+    const ck = cacheKey('TL_FUND_TRACKER', tl._id.toString(), selectedMonth, selectedYear, dateFilter);
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
 
     const db = mongoose.connection.db;
     const tlName = tl.name.trim();
@@ -767,7 +826,7 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     }
     const fseNames = [...new Set(records.map(r => r.fseName).filter(Boolean))];
 
-    const { dateFilter, fromDate, toDate, selectedYear, selectedMonth } = req.query;
+    const { fromDate, toDate } = req.query;
     const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
     const filterByDate = (items, dateField = 'createdAt') => {
@@ -955,7 +1014,9 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
       return { fseName, received, carryForward: carryFwd, totalAvailable, usedBT, rpCount, usedRP, fee, withdrawAmount, withdrawFee, fundLeft };
     });
 
-    res.json({ success: true, tracker });
+    const result = { success: true, tracker };
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -967,6 +1028,10 @@ router.get('/tidebt-team-reward-pass', verifyToken, async (req, res) => {
   try {
     const tl = await TeamLead.findById(req.user.id).select('name');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
+
+    const ck = cacheKey('TL_TEAM_RPASS', tl._id.toString());
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
 
     const db = mongoose.connection.db;
     const tlName = tl.name.trim();
@@ -983,7 +1048,11 @@ router.get('/tidebt-team-reward-pass', verifyToken, async (req, res) => {
     }
     const fseNames = [...new Set(records.map(r => r.fseName).filter(Boolean))];
 
-    if (fseNames.length === 0) return res.json({ success: true, data: [] });
+    if (fseNames.length === 0) {
+      const result = { success: true, data: [] };
+      await cacheSet(ck, result);
+      return res.json(result);
+    }
 
     // Get reward pass data for all FSEs — exact name match, exclude role:'TL' records
     const data = await db.collection('TideBT_RewardPass')
@@ -994,7 +1063,9 @@ router.get('/tidebt-team-reward-pass', verifyToken, async (req, res) => {
       .sort({ createdAt: -1 })
       .toArray();
 
-    res.json({ success: true, data });
+    const result = { success: true, data };
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -1006,13 +1077,19 @@ router.get('/tidebt-fse-targets', verifyToken, async (req, res) => {
     const tl = await TeamLead.findById(req.user.id).select('name');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
+    const ck = cacheKey('TL_FSE_TARGETS', tl._id.toString());
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
+
     const db = mongoose.connection.db;
     const targets = await db.collection('TideBT_Targets')
       .find({ setBy: { $regex: new RegExp(tl.name.trim(), 'i') } })
       .sort({ createdAt: -1 })
       .toArray();
 
-    res.json({ success: true, targets });
+    const result = { success: true, targets };
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -1056,6 +1133,10 @@ router.get('/tidebt-my-reward-pass', verifyToken, async (req, res) => {
     const tl = await TeamLead.findById(req.user.id).select('name email');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
+    const ck = cacheKey('TL_MY_RPASS', tl._id.toString());
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
+
     const db = mongoose.connection.db;
 
     // Match ONLY by employeeId — no email match
@@ -1065,7 +1146,9 @@ router.get('/tidebt-my-reward-pass', verifyToken, async (req, res) => {
       .sort({ createdAt: -1 })
       .toArray();
 
-    res.json({ success: true, data });
+    const result = { success: true, data };
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -1103,13 +1186,19 @@ router.get('/tidebt-my-expenses', verifyToken, async (req, res) => {
     const tl = await TeamLead.findById(req.user.id).select('name');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
+    const ck = cacheKey('TL_EXPENSES', tl._id.toString());
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
+
     const db = mongoose.connection.db;
     const expenses = await db.collection('TideBT_Expenses')
       .find({ employeeId: tl._id })
       .sort({ createdAt: -1 })
       .toArray();
 
-    res.json({ success: true, expenses });
+    const result = { success: true, expenses };
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -1231,6 +1320,11 @@ router.get('/tidebt-bt-performance', verifyToken, async (req, res) => {
     const tl = await TeamLead.findById(req.user.id).select('name');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
+    const { selectedMonth, selectedYear } = req.query;
+    const ck = cacheKey('TL_BT_PERF', tl._id.toString(), selectedMonth, selectedYear);
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
+
     const db     = mongoose.connection.db;
     const tlName = tl.name.trim();
     const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1288,14 +1382,16 @@ router.get('/tidebt-bt-performance', verifyToken, async (req, res) => {
 
 
     // Determine collection based on selectedMonth and selectedYear
-    const { selectedMonth, selectedYear } = req.query;
     const collectionName = await findConnectCollection(db, selectedMonth, selectedYear);
 
     const empty = { success: true, btAmount: 0, btGap: 0, todaysBT: 0, yesterdaysBT: 0,
       upiAmount: 0, upiGap: 0, upiTxnCount: 0, rewardPassCount: 0, passLiveCount: 0,
       totalMerchants: 0, merchants: [], collectionUsed: collectionName };
 
-    if (!collectionName || merchantNumbers.length === 0) return res.json(empty);
+    if (!collectionName || merchantNumbers.length === 0) {
+      await cacheSet(ck, empty);
+      return res.json(empty);
+    }
 
     let btDocs = await db.collection(collectionName).find({
       merchantNumber: { $in: merchantNumbers }
@@ -1337,7 +1433,7 @@ router.get('/tidebt-bt-performance', verifyToken, async (req, res) => {
       return norm;
     });
 
-    res.json({ success: true, collectionUsed: collectionName,
+    const result = { success: true, collectionUsed: collectionName,
       collectionMonth: collectionName ? (() => {
         const parts = collectionName.split(' ');
         const m = parts[parts.length - 1];
@@ -1345,7 +1441,9 @@ router.get('/tidebt-bt-performance', verifyToken, async (req, res) => {
       })() : null,
       btAmount, btGap, todaysBT, yesterdaysBT,
       upiAmount, upiGap, upiTxnCount, rewardPassCount, passLiveCount,
-      totalMerchants: merchants.length, merchants });
+      totalMerchants: merchants.length, merchants };
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     console.error('TL BT performance error:', err.message);
     res.status(500).json({ message: err.message });
@@ -1364,6 +1462,10 @@ router.get('/tidebt-team-merchants', verifyToken, async (req, res) => {
     const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const { selectedMonth, selectedYear } = req.query;
 
+    const ck = cacheKey('TL_TEAM_MERCHANTS', tl._id.toString(), selectedMonth, selectedYear);
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
+
     // Step 1: Get FSEs under this TL
     let accessRecords = await db.collection('TideBT_Access').find({
       tlName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') },
@@ -1379,7 +1481,9 @@ router.get('/tidebt-team-merchants', verifyToken, async (req, res) => {
     const fseNames = [...new Set(accessRecords.map(r => r.fseName).filter(Boolean))];
 
     if (fseNames.length === 0) {
-      return res.json({ success: true, fseData: [], btCollection: null, summary: { totalMerchants: 0, totalBT: 0, totalRP: 0, passLive: 0, pending: 0 } });
+      const result = { success: true, fseData: [], btCollection: null, summary: { totalMerchants: 0, totalBT: 0, totalRP: 0, passLive: 0, pending: 0 } };
+      await cacheSet(ck, result);
+      return res.json(result);
     }
 
     // Step 2: Get BT_TL_CONNECT collection for selected month
@@ -1544,7 +1648,7 @@ router.get('/tidebt-team-merchants', verifyToken, async (req, res) => {
       };
     });
 
-    res.json({
+    const result = {
       success: true,
       btCollection: btCollectionName,
       collectionMonth: btCollectionName ? (() => {
@@ -1554,7 +1658,9 @@ router.get('/tidebt-team-merchants', verifyToken, async (req, res) => {
       })() : null,
       summary: { totalMerchants, totalBT, totalRP, passLive: totalPassLive, pending: totalPending },
       fseData
-    });
+    };
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     console.error('Team merchants error:', err.message);
     res.status(500).json({ message: err.message });
@@ -1574,6 +1680,10 @@ router.get('/tidebt-my-merchants', verifyToken, async (req, res) => {
     const escape  = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const { selectedMonth, selectedYear } = req.query;
 
+    const ck = cacheKey('TL_MY_MERCHANTS', tl._id.toString(), selectedMonth, selectedYear);
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
+
     // Step 1: Get TL's own merchants from bt_master by exact name only
     // (NOT by email — email would pull in FSE "Niteesh Kumar Saroj" merchants)
     const masterDocs = await db.collection('bt_master').find({
@@ -1581,7 +1691,9 @@ router.get('/tidebt-my-merchants', verifyToken, async (req, res) => {
     }).toArray();
 
     if (masterDocs.length === 0) {
-      return res.json({ success: true, merchants: [], total: 0, btCollection: null });
+      const result = { success: true, merchants: [], total: 0, btCollection: null };
+      await cacheSet(ck, result);
+      return res.json(result);
     }
 
     const merchantMap = {};
@@ -1688,7 +1800,9 @@ router.get('/tidebt-my-merchants', verifyToken, async (req, res) => {
       return (a.merchantName || '').localeCompare(b.merchantName || '');
     });
 
-    res.json({ success: true, merchants, total: merchants.length, btCollection: btCollectionName });
+    const result = { success: true, merchants, total: merchants.length, btCollection: btCollectionName };
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     console.error('TL My merchants error:', err.message);
     res.status(500).json({ message: err.message });
@@ -1702,11 +1816,15 @@ router.get('/tidebt-annual-bt-summary', verifyToken, async (req, res) => {
     const tl = await TeamLead.findById(req.user.id).select('name email');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
+    const { year } = req.query;
+    const yearStr  = year || String(new Date().getFullYear());
+    const ck = cacheKey('TL_ANNUAL_BT', tl._id.toString(), yearStr);
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
+
     const db     = mongoose.connection.db;
     const tlName = tl.name.trim();
     const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const { year } = req.query;
-    const yearStr  = year || String(new Date().getFullYear());
 
     // Get TL's own merchant numbers from bt_master (personal BT — exact name match only)
     const masterDocs = await db.collection('bt_master').find({
@@ -1781,7 +1899,9 @@ router.get('/tidebt-annual-bt-summary', verifyToken, async (req, res) => {
       return { month: monthName, btAmount, rewardPassCount, passLiveCount, collectionFound: true, totalDocs: btDocs.length };
     }));
 
-    res.json({ success: true, year: yearStr, months: monthResults });
+    const result = { success: true, year: yearStr, months: monthResults };
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     console.error('TL Annual BT summary error:', err.message);
     res.status(500).json({ message: err.message });
