@@ -1126,6 +1126,13 @@ router.get('/tidebt-my-bt-performance', verifyToken, async (req, res) => {
     const tlName = tl.name.trim();
     const tlEmail = tl.email.trim();
     const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const { selectedMonth, selectedYear } = req.query;
+
+    // ── Cache check ───────────────────────────────────────────────────────
+    const { cacheGet, cacheSet, cacheKey } = require('../utils/cache');
+    const ck = cacheKey('TL_MY_BT', tlName, selectedMonth, selectedYear);
+    const cached = await cacheGet(ck);
+    if (cached) return res.json(cached);
 
     // Get TL's own merchant numbers — bt_master PRIMARY, then TideBT_Merchants + forms as fallback
     // IMPORTANT: Do NOT match by email in bt_master — TL email may match FSE records
@@ -1208,9 +1215,11 @@ router.get('/tidebt-my-bt-performance', verifyToken, async (req, res) => {
       return norm;
     });
 
-    res.json({ success: true, btAmount, btGap, todaysBT, yesterdaysBT,
+    const result = { success: true, btAmount, btGap, todaysBT, yesterdaysBT,
       upiAmount, upiGap, upiTxnCount, rewardPassCount, passLiveCount,
-      totalMerchants: merchants.length, merchants, collectionUsed: collectionName });
+      totalMerchants: merchants.length, merchants, collectionUsed: collectionName };
+    await cacheSet(ck, result);
+    res.json(result);
   } catch (err) {
     console.error('TL My BT performance error:', err.message);
     res.status(500).json({ message: err.message });
