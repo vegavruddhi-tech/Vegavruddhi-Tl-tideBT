@@ -259,6 +259,41 @@ export default function Dashboard() {
       .catch(() => {});
   }, [token]);
 
+  // ── Background prefetch all months so switching is instant ───────────────
+  // Silently fetches bt-performance + team-performance for all months in background
+  // after the page loads. Next time user switches month → data is already in localStorage.
+  useEffect(() => {
+    if (!token || !tl) return;
+    const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const curYear = new Date().getFullYear().toString();
+    // Run in background after 3s delay so it doesn't compete with primary data loading
+    const timer = setTimeout(() => {
+      MONTH_NAMES.forEach(month => {
+        const ckBt   = `tl_btperf_${month}_${curYear}`;
+        const ckMyBt = `tl_mybtperf_${month}_${curYear}`;
+        const ckTeam = `tl_teamperf_${month}_${curYear}`;
+        const ckFund = `tl_fundtracker_${month}_${curYear}_all`;
+        // Only prefetch if not already cached
+        if (!localStorage.getItem(ckBt)) {
+          const p = new URLSearchParams({ selectedMonth: month, selectedYear: curYear });
+          fetch(`${PROFILE_API_BASE}/api/tl/tidebt-bt-performance?${p}`, { headers: { Authorization: 'Bearer ' + token } })
+            .then(r => r.json()).then(d => localStorage.setItem(ckBt, JSON.stringify(d))).catch(() => {});
+        }
+        if (!localStorage.getItem(ckMyBt)) {
+          const p = new URLSearchParams({ selectedMonth: month, selectedYear: curYear });
+          fetch(`${PROFILE_API_BASE}/api/tl/tidebt-my-bt-performance?${p}`, { headers: { Authorization: 'Bearer ' + token } })
+            .then(r => r.json()).then(d => localStorage.setItem(ckMyBt, JSON.stringify(d))).catch(() => {});
+        }
+        if (!localStorage.getItem(ckTeam)) {
+          const p = new URLSearchParams({ selectedMonth: month, selectedYear: curYear });
+          fetch(`${PROFILE_API_BASE}/api/tl/tidebt-team-performance?${p}`, { headers: { Authorization: 'Bearer ' + token } })
+            .then(r => r.json()).then(d => localStorage.setItem(ckTeam, JSON.stringify(d))).catch(() => {});
+        }
+      });
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [token, tl, PROFILE_API_BASE]);
+
   // Load TL profile from existing backend
   useEffect(() => {
     if (!token) {
