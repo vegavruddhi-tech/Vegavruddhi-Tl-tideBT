@@ -523,6 +523,28 @@ router.post('/tidebt-daily-visit', verifyToken, async (req, res) => {
     await cacheInvalidatePattern(`TL_MY_FORMS:${tl._id.toString()}*`);
     await cacheInvalidatePattern(`TL_TEAM_FORMS:${tl._id.toString()}*`);
 
+    // ── Auto-add to bt_master if merchant not already there ───────────────
+    try {
+      const db = mongoose.connection.db;
+      const existing = await db.collection('bt_master').findOne({ merchantNumber });
+      if (!existing && merchantNumber) {
+        await db.collection('bt_master').insertOne({
+          merchantNumber,
+          merchantName:  merchantName  || '',
+          merchantEmail: merchantEmailId || '',
+          fseName:       tl.name,
+          fseEmail:      tl.email,
+          tl:            tl.name,
+          _syncedAt:     new Date(),
+          _source:       'tidebt-form-auto'
+        });
+        console.log(`✅ Auto-added to bt_master: ${merchantNumber} for TL ${tl.name}`);
+      }
+    } catch (btErr) {
+      console.error('bt_master auto-insert error (non-fatal):', btErr.message);
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     res.status(201).json({ message: 'Daily visit form submitted', form: formResponse });
   } catch (err) {
     res.status(500).json({ message: err.message });
