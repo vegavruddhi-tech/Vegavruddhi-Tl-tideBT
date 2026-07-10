@@ -30,21 +30,19 @@ const findConnectCollection = async (db, selectedMonth, selectedYear) => {
   };
   const monthAbbr = MONTH_ABBR[monthUpper] || monthUpper;
 
-  // Search BT_TL_CONNECT first (new format), then TL_CONNECT / tl_connect (old format)
+  // Only use BT_TL_CONNECT* collections — never tl_connect_*
   const btCollections = allCollections.filter(c => c.toUpperCase().startsWith('BT_TL_CONNECT'));
-  const tlCollections = allCollections.filter(c => c.toUpperCase().includes('TL_CONNECT') && !c.toUpperCase().startsWith('BT_TL_CONNECT'));
-  const candidateCollections = [...btCollections, ...tlCollections];
 
   const matchesMonth = (cu) => cu.includes(monthUpper) || cu.includes(monthAbbr);
 
   if (yearStr) {
-    const match = candidateCollections.find(c => {
+    const match = btCollections.find(c => {
       const cu = c.toUpperCase();
       return matchesMonth(cu) && (cu.includes(yearStr) || cu.includes(shortYear));
     });
     if (match) return match;
   }
-  const match = candidateCollections.find(c => matchesMonth(c.toUpperCase()));
+  const match = btCollections.find(c => matchesMonth(c.toUpperCase()));
   if (match) return match;
 
   return null;
@@ -149,6 +147,42 @@ router.post('/google-login', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '8h' }
     );
+
+    // ── Mark Attendance for TideBT TL ─────────────────────────────────────
+    try {
+      const db = mongoose.connection.db;
+      const now = new Date();
+      const istTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+      const today = istTime.toISOString().split('T')[0];
+
+      const existing = await db.collection('Attendance').findOne({ userId: tl._id, date: today });
+      if (!existing) {
+        await db.collection('Attendance').insertOne({
+          userId: tl._id,
+          userEmail: tl.email,
+          userName: tl.name,
+          userType: 'teamlead',
+          date: today,
+          firstLoginTime: now,
+          lastActivityTime: now,
+          attendanceMarked: true,
+          reloginCount: 0,
+          status: 'present',
+          source: 'tidebt-tl',
+          createdAt: now,
+        });
+        console.log(`✅ Attendance marked (TideBT TL): ${tl.email}`);
+      } else {
+        await db.collection('Attendance').updateOne(
+          { userId: tl._id, date: today },
+          { $set: { lastActivityTime: now, lastLogoutTime: null, duration: null }, $inc: { reloginCount: 1 } }
+        );
+        console.log(`✅ Re-login (TideBT TL): ${tl.email}`);
+      }
+    } catch (attErr) {
+      console.error('Attendance marking error (TL):', attErr.message);
+    }
+    // ──────────────────────────────────────────────────────────────────────
 
     res.json({ token, user: tl });
   } catch (err) {
@@ -910,12 +944,11 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
       const mu = monthName.toUpperCase();
       const abbr = MONTH_ABBR_MAP[mu] || mu;
       const sy = yearStr ? yearStr.slice(-2) : null;
+      // Only use BT_TL_CONNECT* collections — never tl_connect_*
       const btCols = allCollections.filter(c => c.toUpperCase().startsWith('BT_TL_CONNECT'));
-      const tlCols = allCollections.filter(c => c.toUpperCase().includes('TL_CONNECT') && !c.toUpperCase().startsWith('BT_TL_CONNECT'));
-      const candidates = [...btCols, ...tlCols];
       const mm = cu => cu.includes(mu) || cu.includes(abbr);
-      if (yearStr) { const m = candidates.find(c => { const cu = c.toUpperCase(); return mm(cu) && (cu.includes(yearStr) || (sy && cu.includes(sy))); }); if (m) return m; }
-      return candidates.find(c => mm(c.toUpperCase())) || null;
+      if (yearStr) { const m = btCols.find(c => { const cu = c.toUpperCase(); return mm(cu) && (cu.includes(yearStr) || (sy && cu.includes(sy))); }); if (m) return m; }
+      return btCols.find(c => mm(c.toUpperCase())) || null;
     };
 
     const fseCarryMap = {}; // fseName.toLowerCase() → cumulative carry
@@ -1101,7 +1134,7 @@ router.post('/tidebt-set-fse-target', verifyToken, async (req, res) => {
     const tl = await TeamLead.findById(req.user.id).select('name');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
-    const { targetFor, btTarget, rpTarget, month, year } = req.body;
+    const { targetFor, btTarget, rpTarget, month, year, startDate, endDate } = req.body;
     if (!targetFor || !btTarget || !rpTarget || !month || !year) {
       return res.status(400).json({ message: 'All fields required' });
     }
@@ -1118,6 +1151,8 @@ router.post('/tidebt-set-fse-target', verifyToken, async (req, res) => {
       rpTarget: parseInt(rpTarget),
       month,
       year: parseInt(year),
+      startDate: startDate || null,
+      endDate: endDate || null,
       createdAt: new Date()
     });
 
@@ -1858,16 +1893,15 @@ router.get('/tidebt-annual-bt-summary', verifyToken, async (req, res) => {
     const monthResults = await Promise.all(MONTH_NAMES.map(async (monthName) => {
       const monthUpper = monthName.toUpperCase();
       const monthAbbr  = MONTH_ABBR[monthUpper] || monthUpper;
+      // Only use BT_TL_CONNECT* collections — never tl_connect_*
       const btCols = allCollections.filter(c => c.toUpperCase().startsWith('BT_TL_CONNECT'));
-      const tlCols = allCollections.filter(c => c.toUpperCase().includes('TL_CONNECT') && !c.toUpperCase().startsWith('BT_TL_CONNECT'));
-      const candidates = [...btCols, ...tlCols];
       const matchesMonth = (cu) => cu.includes(monthUpper) || cu.includes(monthAbbr);
 
-      let colName = candidates.find(c => {
+      let colName = btCols.find(c => {
         const cu = c.toUpperCase();
         return matchesMonth(cu) && (cu.includes(yearStr) || cu.includes(shortYear));
       });
-      if (!colName) colName = candidates.find(c => matchesMonth(c.toUpperCase()));
+      if (!colName) colName = btCols.find(c => matchesMonth(c.toUpperCase()));
       if (!colName) return { month: monthName, btAmount: 0, rewardPassCount: 0, passLiveCount: 0, collectionFound: false };
 
       const [byMerchant, byLead] = await Promise.all([

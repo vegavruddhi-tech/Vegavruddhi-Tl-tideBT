@@ -29,6 +29,8 @@ export default function Dashboard() {
   const [targetFSE, setTargetFSE] = useState('');
   const [targetBT, setTargetBT] = useState('');
   const [targetRP, setTargetRP] = useState('');
+  const [targetStartDate, setTargetStartDate] = useState('');
+  const [targetEndDate, setTargetEndDate] = useState('');
   const [targetSaving, setTargetSaving] = useState(false);
   const [targetSuccess, setTargetSuccess] = useState('');
   const [fseTargets, setFseTargets] = useState([]);
@@ -1276,6 +1278,16 @@ export default function Dashboard() {
                 <input type="number" value={targetRP} onChange={e => setTargetRP(e.target.value)} placeholder="Count"
                   style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #dde8dd', borderRadius: 8, fontSize: 12 }} />
               </div>
+              <div style={{ flex: 1, minWidth: 100 }}>
+                <label style={{ fontSize: 10, fontWeight: 600, color: '#888', display: 'block', marginBottom: 4 }}>Start Date</label>
+                <input type="date" value={targetStartDate || ''} onChange={e => setTargetStartDate(e.target.value)}
+                  style={{ width: '100%', padding: '7px 8px', border: '1.5px solid #dde8dd', borderRadius: 8, fontSize: 11 }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 100 }}>
+                <label style={{ fontSize: 10, fontWeight: 600, color: '#888', display: 'block', marginBottom: 4 }}>Deadline</label>
+                <input type="date" value={targetEndDate || ''} onChange={e => setTargetEndDate(e.target.value)}
+                  style={{ width: '100%', padding: '7px 8px', border: '1.5px solid #dde8dd', borderRadius: 8, fontSize: 11 }} />
+              </div>
               <button disabled={targetSaving || !targetFSE || !targetBT || !targetRP}
                 onClick={async () => {
                   setTargetSaving(true); setTargetSuccess('');
@@ -1285,11 +1297,12 @@ export default function Dashboard() {
                     const res = await fetch(`${PROFILE_API_BASE}/api/tl/tidebt-set-fse-target`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                      body: JSON.stringify({ targetFor: targetFSE, btTarget: targetBT, rpTarget: targetRP, month: currentMonth, year: currentYear })
+                      body: JSON.stringify({ targetFor: targetFSE, btTarget: targetBT, rpTarget: targetRP, month: currentMonth, year: currentYear, startDate: targetStartDate || null, endDate: targetEndDate || null })
                     });
                     if (res.ok) {
                       setTargetSuccess(`✓ Target set for ${targetFSE}`);
                       setTargetFSE(''); setTargetBT(''); setTargetRP('');
+                      setTargetStartDate(''); setTargetEndDate('');
                       // Refresh targets list
                       fetch(`${PROFILE_API_BASE}/api/tl/tidebt-fse-targets`, { headers: { Authorization: 'Bearer ' + token } })
                         .then(r => r.json()).then(data => setFseTargets(data.targets || [])).catch(() => {});
@@ -1313,17 +1326,37 @@ export default function Dashboard() {
                         <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#888' }}>BT Target</th>
                         <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#888' }}>RP Target</th>
                         <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#888' }}>Month</th>
+                        <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#888' }}>Deadline</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredFseTargets.map((t, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                          <td style={{ padding: '6px 10px', fontWeight: 600 }}>{t.targetFor}</td>
-                          <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#e65100' }}>₹{t.btTarget?.toLocaleString()}</td>
-                          <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>{t.rpTarget}</td>
-                          <td style={{ padding: '6px 10px', color: '#888' }}>{t.month} {t.year}</td>
-                        </tr>
-                      ))}
+                      {filteredFseTargets.map((t, i) => {
+                        const dl = t.endDate ? Math.ceil((new Date(t.endDate) - new Date()) / (1000*60*60*24)) : null;
+                        const isAdminSet = !t.setByRole || t.setByRole === 'Admin';
+                        return (
+                          <tr key={i} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                            <td style={{ padding: '6px 10px', fontWeight: 600 }}>
+                              {t.targetFor}
+                              {isAdminSet && <span style={{ marginLeft: 4, fontSize: 9, color: '#9e9e9e' }}>🔒 Admin</span>}
+                            </td>
+                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#e65100' }}>₹{t.btTarget?.toLocaleString()}</td>
+                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>{t.rpTarget}</td>
+                            <td style={{ padding: '6px 10px', color: '#888' }}>{t.month} {t.year}</td>
+                            <td style={{ padding: '6px 10px' }}>
+                              {t.endDate ? (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 6,
+                                  background: dl < 0 ? '#fee2e2' : dl <= 3 ? '#fff3e0' : '#e8f5e9',
+                                  color: dl < 0 ? '#b91c1c' : dl <= 3 ? '#e65100' : '#1a4731'
+                                }}>
+                                  {new Date(t.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                  {dl !== null && ` (${dl < 0 ? 'Expired' : dl === 0 ? 'Today' : `${dl}d`})`}
+                                </span>
+                              ) : '–'}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
