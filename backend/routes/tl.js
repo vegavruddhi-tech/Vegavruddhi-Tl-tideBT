@@ -1129,25 +1129,46 @@ router.get('/tidebt-team-reward-pass', verifyToken, async (req, res) => {
   }
 });
 
-// GET /api/tl/tidebt-fse-targets - Get targets set by this TL
+// GET /api/tl/tidebt-fse-targets - Get ALL targets for this TL's FSEs (set by TL or Admin)
+// No MongoDB cache — admin can set targets on a different backend, cache would hide them
 router.get('/tidebt-fse-targets', verifyToken, async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('Pragma', 'no-cache');
   try {
     const tl = await TeamLead.findById(req.user.id).select('name');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
-    const ck = cacheKey('TL_FSE_TARGETS', tl._id.toString());
-    const cached = await cacheGet(ck);
-    if (cached) return res.json(cached);
-
     const db = mongoose.connection.db;
-    const targets = await db.collection('TideBT_Targets')
-      .find({ setBy: { $regex: new RegExp(tl.name.trim(), 'i') } })
-      .sort({ createdAt: -1 })
-      .toArray();
+    const tlName = tl.name.trim();
+    const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    const result = { success: true, targets };
-    await cacheSet(ck, result);
-    res.json(result);
+    // Get all FSEs under this TL
+    let accessRecs = await db.collection('TideBT_Access').find({
+      tlName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') },
+      hasTideBTAccess: true
+    }, { projection: { fseName: 1, _id: 0 } }).toArray();
+
+    if (accessRecs.length === 0) {
+      const fw = tlName.split(' ')[0];
+      accessRecs = await db.collection('TideBT_Access').find({
+        tlName: { $regex: new RegExp(`^\\s*${escape(fw)}\\s*$`, 'i') },
+        hasTideBTAccess: true
+      }, { projection: { fseName: 1, _id: 0 } }).toArray();
+    }
+
+    const fseNames = [...new Set(accessRecs.map(r => r.fseName).filter(Boolean))];
+
+    // Get ALL targets for these FSEs (regardless of who set them)
+    const targets = fseNames.length > 0
+      ? await db.collection('TideBT_Targets')
+          .find({
+            targetFor: { $in: fseNames.map(n => new RegExp(`^\\s*${escape(n)}\\s*$`, 'i')) }
+          })
+          .sort({ createdAt: -1 })
+          .toArray()
+      : [];
+
+    res.json({ success: true, targets, fseNames });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

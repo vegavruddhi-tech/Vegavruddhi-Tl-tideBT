@@ -437,11 +437,17 @@ export default function Dashboard() {
       .catch(() => {});
   }, [token, tl, selectedMonth, selectedYear]);
 
-  // Fetch FSE targets set by this TL
+  // Fetch FSE targets (all targets for TL's FSEs — set by TL or Admin)
   useEffect(() => {
     if (!token || !tl) return;
-    cachedFetch(`${PROFILE_API_BASE}/api/tl/tidebt-fse-targets`, setFseTargets, d => d.targets || [], 'tl_fsetargets');
-  }, [token, tl, cachedFetch]);
+    // No localStorage cache — admin can set targets from different backend
+    fetch(`${PROFILE_API_BASE}/api/tl/tidebt-fse-targets`, {
+      headers: { Authorization: 'Bearer ' + token }, cache: 'no-store'
+    })
+      .then(r => r.json())
+      .then(d => setFseTargets(d.targets || []))
+      .catch(() => {});
+  }, [token, tl, selectedMonth, selectedYear]);
 
   // Fetch team fund tracker
   useEffect(() => {
@@ -1324,7 +1330,9 @@ export default function Dashboard() {
             {/* FSE Targets Table */}
             {filteredFseTargets.length > 0 && (
               <div style={{ marginTop: 14, borderTop: '1px solid #e8f3ed', paddingTop: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#1a4731', marginBottom: 8 }}>Targets Set by You:</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#1a4731', marginBottom: 8 }}>
+                  🎯 Team Targets ({selectedMonth} {selectedYear}):
+                </div>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                     <thead>
@@ -1333,6 +1341,7 @@ export default function Dashboard() {
                         <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#888' }}>BT Target</th>
                         <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#888' }}>RP Target</th>
                         <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#888' }}>Month</th>
+                        <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#888' }}>Set By</th>
                         <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#888' }}>Deadline</th>
                       </tr>
                     </thead>
@@ -1341,14 +1350,22 @@ export default function Dashboard() {
                         const dl = t.endDate ? Math.ceil((new Date(t.endDate) - new Date()) / (1000*60*60*24)) : null;
                         const isAdminSet = !t.setByRole || t.setByRole === 'Admin';
                         return (
-                          <tr key={i} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                            <td style={{ padding: '6px 10px', fontWeight: 600 }}>
-                              {t.targetFor}
-                              {isAdminSet && <span style={{ marginLeft: 4, fontSize: 9, color: '#9e9e9e' }}>🔒 Admin</span>}
-                            </td>
-                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#e65100' }}>₹{t.btTarget?.toLocaleString()}</td>
+                          <tr key={i} style={{ borderBottom: '1px solid #f0f0f0', background: isAdminSet ? '#fffbf0' : '#fff' }}>
+                            <td style={{ padding: '6px 10px', fontWeight: 600 }}>{t.targetFor}</td>
+                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#e65100' }}>₹{(t.btTarget || 0).toLocaleString()}</td>
                             <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>{t.rpTarget}</td>
                             <td style={{ padding: '6px 10px', color: '#888' }}>{t.month} {t.year}</td>
+                            <td style={{ padding: '6px 10px' }}>
+                              {isAdminSet ? (
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: '#fce4ec', color: '#880e4f' }}>
+                                  🔒 Admin
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: '#e8f5e9', color: '#1a4731' }}>
+                                  👤 You
+                                </span>
+                              )}
+                            </td>
                             <td style={{ padding: '6px 10px' }}>
                               {t.endDate ? (
                                 <span style={{
