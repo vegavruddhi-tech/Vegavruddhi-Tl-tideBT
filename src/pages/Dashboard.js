@@ -1339,8 +1339,8 @@ export default function Dashboard() {
                       <tr style={{ background: '#f5f5f5' }}>
                         <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#888' }}>FSE</th>
                         <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#888' }}>BT Target</th>
-                        <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#888' }}>RP Target</th>
-                        <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#888' }}>Month</th>
+                        <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#888', minWidth: 130 }}>BT Progress</th>
+                        <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#888' }}>RP</th>
                         <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#888' }}>Set By</th>
                         <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#888' }}>Deadline</th>
                       </tr>
@@ -1349,12 +1349,42 @@ export default function Dashboard() {
                       {filteredFseTargets.map((t, i) => {
                         const dl = t.endDate ? Math.ceil((new Date(t.endDate) - new Date()) / (1000*60*60*24)) : null;
                         const isAdminSet = !t.setByRole || t.setByRole === 'Admin';
+                        // BT achievement from teamPerformance data
+                        const fsePerf = (teamPerformance?.fseData || []).find(f =>
+                          (f.fseName || '').toLowerCase().trim() === (t.targetFor || '').toLowerCase().trim()
+                        );
+                        const btAchieved = fsePerf ? (fsePerf.btCompleted || 0) : 0;
+                        const btTarget   = t.btTarget || 0;
+                        const btPct      = btTarget > 0 ? Math.min(100, Math.round((btAchieved / btTarget) * 100)) : 0;
+                        const isComplete = btPct >= 100;
                         return (
-                          <tr key={i} style={{ borderBottom: '1px solid #f0f0f0', background: isAdminSet ? '#fffbf0' : '#fff' }}>
-                            <td style={{ padding: '6px 10px', fontWeight: 600 }}>{t.targetFor}</td>
-                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#e65100' }}>₹{(t.btTarget || 0).toLocaleString()}</td>
+                          <tr key={i} style={{ borderBottom: '1px solid #f0f0f0', background: isComplete ? '#f0fdf4' : isAdminSet ? '#fffbf0' : '#fff' }}>
+                            <td style={{ padding: '6px 10px', fontWeight: 600 }}>
+                              {isComplete && <span style={{ marginRight: 3 }}>✅</span>}
+                              {t.targetFor}
+                            </td>
+                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#e65100' }}>₹{(btTarget || 0).toLocaleString()}</td>
+                            <td style={{ padding: '6px 10px' }}>
+                              {btTarget > 0 ? (
+                                <div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                                    <span style={{ fontSize: 10, fontWeight: 700, color: isComplete ? '#2e7d32' : '#1a4731' }}>
+                                      {isComplete ? '🎉 Done!' : `${btPct}%`}
+                                    </span>
+                                    <span style={{ fontSize: 9, color: '#888' }}>₹{btAchieved.toLocaleString()}</span>
+                                  </div>
+                                  <div style={{ height: 5, borderRadius: 4, background: '#e0e0e0', overflow: 'hidden' }}>
+                                    <div style={{
+                                      height: '100%', borderRadius: 4,
+                                      width: `${btPct}%`,
+                                      background: isComplete ? '#2e7d32' : btPct >= 75 ? '#66bb6a' : btPct >= 50 ? '#ffa726' : '#ef5350',
+                                      transition: 'width 0.5s ease'
+                                    }} />
+                                  </div>
+                                </div>
+                              ) : <span style={{ color: '#888', fontSize: 10 }}>–</span>}
+                            </td>
                             <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>{t.rpTarget}</td>
-                            <td style={{ padding: '6px 10px', color: '#888' }}>{t.month} {t.year}</td>
                             <td style={{ padding: '6px 10px' }}>
                               {isAdminSet ? (
                                 <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: '#fce4ec', color: '#880e4f' }}>
