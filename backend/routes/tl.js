@@ -582,40 +582,43 @@ router.post('/tidebt-reward-pass', verifyToken, async (req, res) => {
 });
 
 // GET /api/tl/tidebt-my-target - TL gets their target (sum of all targets for this month)
+// NOTE: No MongoDB cache — targets set by admin on a DIFFERENT backend, cache can't be invalidated here.
 router.get('/tidebt-my-target', verifyToken, async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('Pragma', 'no-cache');
   try {
     const tl = await TeamLead.findById(req.user.id).select('name');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
     const { month, year } = req.query;
-    const ck = cacheKey('TL_TARGET', tl._id.toString(), month, year);
-    const cached = await cacheGet(ck);
-    if (cached) return res.json(cached);
-
     const db = mongoose.connection.db;
-    const query = { targetFor: { $regex: new RegExp(tl.name.trim(), 'i') } };
-    if (month) query.month = month;
-    if (year) query.year = parseInt(year);
+    const tlName = tl.name.trim();
+    const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // Get ALL targets and sum them
+    // Exact boundary match — prevents "Ravi" matching "Ravi Kumar"
+    const query = {
+      targetFor: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') }
+    };
+    if (month) query.month = month;
+    if (year)  query.year  = parseInt(year);
+
     const targets = await db.collection('TideBT_Targets').find(query).toArray();
-    
+    console.log(`[Target] TL: "${tlName}", month: ${month}, year: ${year}, found: ${targets.length}`);
+
     if (targets.length === 0) {
-      const result = { success: true, target: null };
-      await cacheSet(ck, result);
-      return res.json(result);
+      return res.json({ success: true, target: null });
     }
 
     const target = {
-      btTarget: targets.reduce((sum, t) => sum + (t.btTarget || 0), 0),
-      rpTarget: targets.reduce((sum, t) => sum + (t.rpTarget || 0), 0),
-      month: month || targets[0].month,
-      year: year || targets[0].year
+      btTarget:  targets.reduce((sum, t) => sum + (t.btTarget  || 0), 0),
+      rpTarget:  targets.reduce((sum, t) => sum + (t.rpTarget  || 0), 0),
+      month:     month || targets[0].month,
+      year:      year  || targets[0].year,
+      endDate:   targets[0].endDate   || null,
+      startDate: targets[0].startDate || null,
     };
 
-    const result = { success: true, target };
-    await cacheSet(ck, result);
-    res.json(result);
+    res.json({ success: true, target });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

@@ -426,9 +426,16 @@ export default function Dashboard() {
     if (!token || !tl) return;
     const targetMonth = selectedMonth || '';
     const targetYear = selectedYear || '';
-    cachedFetch(`${PROFILE_API_BASE}/api/tl/tidebt-my-target?month=${targetMonth}&year=${targetYear}`,
-      setMyTarget, d => d.target || null, `tl_target_${targetMonth}_${targetYear}`);
-  }, [token, tl, selectedMonth, selectedYear, cachedFetch]);
+    // No localStorage cache for targets — admin sets them on a different backend,
+    // stale cache would hide the target. Always fetch fresh.
+    fetch(
+      `${PROFILE_API_BASE}/api/tl/tidebt-my-target?month=${targetMonth}&year=${targetYear}`,
+      { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' }
+    )
+      .then(r => r.json())
+      .then(d => setMyTarget(d.target || null))
+      .catch(() => {});
+  }, [token, tl, selectedMonth, selectedYear]);
 
   // Fetch FSE targets set by this TL
   useEffect(() => {
