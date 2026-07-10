@@ -1060,7 +1060,7 @@ export default function Dashboard() {
         </div>
 
         {/* Previous month carry-forward banner */}
-        {prevMonthData.prevReceived > 0 && (
+        {(prevMonthData.prevReceived !== 0 || carryForward > 0) && (
           <div style={{ background: 'linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%)', borderRadius: 12, padding: '12px 14px', marginBottom: 12, border: '1.5px solid #a5d6a7', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, color: '#2e7d32', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -1156,12 +1156,20 @@ export default function Dashboard() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {filteredSentPayments.filter(p => !p.isSelf && p.transferToWhom !== 'Self').map((p, i) => {
                 const date = p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '–';
+                const isRecovery = (p.amount || 0) < 0;
                 return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', background: '#f8faf9', borderRadius: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#1a4731' }}>{p.transferTo}</div>
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', background: isRecovery ? '#fff5f5' : '#f8faf9', borderRadius: 8, border: isRecovery ? '1px solid #ffcdd2' : 'none' }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: isRecovery ? '#c62828' : '#1a4731' }}>
+                        {isRecovery ? '↩ Recovered from ' : ''}{p.transferTo}
+                      </div>
+                      {isRecovery && <div style={{ fontSize: 9, color: '#888' }}>Fund returned by FSE</div>}
+                    </div>
                     <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                       <span style={{ fontSize: 11, color: '#888' }}>{p.paymentDoneOn} · {date}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#2e7d32' }}>₹{p.amount?.toLocaleString()}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isRecovery ? '#c62828' : '#2e7d32' }}>
+                        {isRecovery ? '-' : ''}₹{Math.abs(p.amount || 0).toLocaleString()}
+                      </span>
                     </div>
                   </div>
                 );
@@ -1692,21 +1700,34 @@ export default function Dashboard() {
                   {filteredSentPayments.map((p, i) => {
                     const date = p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '–';
                     const isExpanded = expandedMyForm === `pay-${i}`;
+                    const isRecovery = (p.amount || 0) < 0;
                     return (
-                      <div key={i} style={{ background: '#fff', borderRadius: 10, border: '1px solid #e8f3ed', padding: '12px 14px', cursor: 'pointer' }} onClick={() => setExpandedMyForm(isExpanded ? null : `pay-${i}`)}>
+                      <div key={i} style={{ background: isRecovery ? '#fff5f5' : '#fff', borderRadius: 10, border: `1px solid ${isRecovery ? '#ffcdd2' : '#e8f3ed'}`, padding: '12px 14px', cursor: 'pointer' }} onClick={() => setExpandedMyForm(isExpanded ? null : `pay-${i}`)}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#e6f4ea', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>💰</div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: '#2e7d32' }}>₹{p.amount?.toLocaleString()} → {p.transferTo}</div>
-                            <div style={{ fontSize: 10, color: '#888' }}>{p.paymentDoneOn} · 📅 {date}</div>
+                          <div style={{ width: 36, height: 36, borderRadius: '50%', background: isRecovery ? '#ffebee' : '#e6f4ea', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
+                            {isRecovery ? '↩' : '💰'}
                           </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: isRecovery ? '#c62828' : '#2e7d32' }}>
+                              {isRecovery
+                                ? `↩ Recovered ₹${Math.abs(p.amount || 0).toLocaleString()} from ${p.transferTo}`
+                                : `₹${(p.amount || 0).toLocaleString()} → ${p.transferTo}`}
+                            </div>
+                            <div style={{ fontSize: 10, color: '#888' }}>
+                              {isRecovery ? 'Fund return by FSE · ' : ''}{p.paymentDoneOn} · 📅 {date}
+                            </div>
+                          </div>
+                          <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 6, fontWeight: 700, background: isRecovery ? '#fdecea' : '#e6f4ea', color: isRecovery ? '#c62828' : '#2e7d32' }}>
+                            {isRecovery ? 'Recovery' : 'Sent'}
+                          </span>
                         </div>
                         {isExpanded && (
                           <div style={{ marginTop: 10, padding: '10px 12px', background: '#f8faf9', borderRadius: 8, fontSize: 11, color: '#333', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                             <div><b>To:</b> {p.transferTo}</div>
-                            <div><b>Amount:</b> ₹{p.amount?.toLocaleString()}</div>
+                            <div><b>Amount:</b> {isRecovery ? '-' : ''}₹{Math.abs(p.amount || 0).toLocaleString()}</div>
                             <div><b>Payment On:</b> {p.paymentDoneOn || '–'}</div>
                             <div><b>Date:</b> {date}</div>
+                            {isRecovery && <div style={{ gridColumn: '1/-1', color: '#c62828', fontWeight: 600 }}>⚠️ This is a fund recovery — FSE returned money to TL</div>}
                           </div>
                         )}
                       </div>
