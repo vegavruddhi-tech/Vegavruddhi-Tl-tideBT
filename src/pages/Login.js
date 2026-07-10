@@ -13,11 +13,16 @@ export default function Login() {
     // Check if token is passed in URL (from TL portal redirect)
     const params = new URLSearchParams(window.location.search);
     const tokenFromURL = params.get('token');
+    const viewAsFromURL = params.get('viewAs');
 
     if (tokenFromURL) {
       // Clear any previous session before saving new token
       localStorage.clear();
       localStorage.setItem('token', tokenFromURL);
+      if (viewAsFromURL) {
+        localStorage.setItem('viewAsEmail', viewAsFromURL);
+        localStorage.setItem('isImpersonating', 'true');
+      }
       navigate('/dashboard');
       return;
     }
