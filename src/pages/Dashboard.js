@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import ImpersonationBanner from '../components/ImpersonationBanner';
 
 // Use existing backend (port 4000) for profile and Tide BT access data
 const PROFILE_API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:4002';
@@ -10,6 +11,35 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [isImpersonating, setIsImpersonating] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('token') && params.get('viewAs')) {
+      localStorage.setItem('token', params.get('token'));
+      localStorage.setItem('viewAsEmail', params.get('viewAs'));
+      localStorage.setItem('isImpersonating', 'true');
+      return true;
+    }
+    return localStorage.getItem('isImpersonating') === 'true';
+  });
+  const [viewAsEmail, setViewAsEmail] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('viewAs') || localStorage.getItem('viewAsEmail') || '';
+  });
+
+  const handleExitImpersonation = () => {
+    localStorage.removeItem('isImpersonating');
+    localStorage.removeItem('viewAsEmail');
+    localStorage.removeItem('token');
+    if (window.opener && !window.opener.closed) {
+      window.close();
+    } else {
+      const adminAppUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:3002'
+        : 'https://vegavruddhi-admin-panel.vercel.app';
+      window.location.href = adminAppUrl;
+    }
+  };
+
   const token = localStorage.getItem('token');
   const [tl, setTl] = useState(null);
   const [fseList, setFseList] = useState([]);
@@ -151,17 +181,17 @@ export default function Dashboard() {
     };
 
     // Prev month received by TL
-    const prevReceived = receivedPayments
+    const prevReceived = (Array.isArray(receivedPayments) ? receivedPayments : [])
       .filter(p => isInPrevMonth(p.createdAt))
       .reduce((s, p) => s + (p.amount || 0), 0);
 
     // Prev month self-transferred (TL kept for self)
-    const prevSelf = sentPayments
+    const prevSelf = (Array.isArray(sentPayments) ? sentPayments : [])
       .filter(p => isInPrevMonth(p.createdAt) && (p.isSelf || p.transferToWhom === 'Self'))
       .reduce((s, p) => s + (p.amount || 0), 0);
 
     // Prev month sent to FSEs
-    const prevSentFSEs = sentPayments
+    const prevSentFSEs = (Array.isArray(sentPayments) ? sentPayments : [])
       .filter(p => isInPrevMonth(p.createdAt) && !p.isSelf && p.transferToWhom !== 'Self')
       .reduce((s, p) => s + (p.amount || 0), 0);
 
@@ -172,7 +202,7 @@ export default function Dashboard() {
     const prevFee     = Math.round((prevBT > 10000 ? prevBT * 0.015 : 0) * 100) / 100;
 
     // Mobikwik withdraw from local forms
-    const prevWithdraw = myForms.filter(f => f.formType === 'mobikwik-withdraw' && isInPrevMonth(f.createdAt))
+    const prevWithdraw = (Array.isArray(myForms) ? myForms : []).filter(f => f.formType === 'mobikwik-withdraw' && isInPrevMonth(f.createdAt))
       .reduce((s, f) => s + (f.withdrawAmount || 0), 0);
     const prevWithdrawFees = Math.round(prevWithdraw * 0.03 * 100) / 100;
     const prevTotalUsed = prevRP + prevFee + prevWithdrawFees;
@@ -833,6 +863,12 @@ export default function Dashboard() {
     <>
       <Navbar tl={tl} />
       <div className="main-content">
+        <ImpersonationBanner
+          isImpersonating={isImpersonating}
+          targetName={tl?.name || viewAsEmail}
+          targetEmail={viewAsEmail}
+          onExit={handleExitImpersonation}
+        />
         
         {/* Welcome card - with Tide BT label */}
         <div className="welcome-card" style={{ flexDirection: 'row', alignItems: 'center', padding: '16px 20px', position: 'relative' }}>
