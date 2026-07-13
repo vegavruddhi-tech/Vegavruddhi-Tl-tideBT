@@ -1988,4 +1988,97 @@ router.get('/tidebt-annual-bt-summary', verifyToken, async (req, res) => {
   }
 });
 
+// GET /api/tl/tidebt-carry-forward?month=July&year=2026
+// Server-computed carry forward: received - sent_to_others - BT_fee - RP_cost
+// Correctly handles TLs who distribute fund to FSEs.
+router.get('/tidebt-carry-forward', verifyToken, async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  try {
+    const tl = await TeamLead.findById(req.user.id).select('name');
+    if (!tl) return res.status(404).json({ message: 'TL not found' });
+
+    const { month, year } = req.query;
+    if (!month || !year) return res.json({ success: true, carryForward: 0 });
+
+    const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const MONTH_ABBR  = {'JANUARY':'JAN','FEBRUARY':'FEB','MARCH':'MAR','APRIL':'APR','MAY':'MAY','JUNE':'JUN','JULY':'JUL','AUGUST':'AUG','SEPTEMBER':'SEP','OCTOBER':'OCT','NOVEMBER':'NOV','DECEMBER':'DEC'};
+
+    const curMonthIdx = MONTH_NAMES.indexOf(month);
+    if (curMonthIdx <= 0) return res.json({ success: true, carryForward: 0 });
+
+    const curYear    = parseInt(year);
+    const pastMonths = MONTH_NAMES.slice(0, curMonthIdx);
+    const tlName     = tl.name.trim().toLowerCase();
+    const escape     = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const db = mongoose.connection.db;
+    const allPayments = await db.collection('TideBT_Payments').find({}).toArray();
+
+    // TL's own merchants in bt_master (for BT cost calculation)
+    const masterDocs = await db.collection('bt_master').find({
+      fseName: { $regex: new RegExp(`^\\s*${escape(tl.name.trim())}\\s*\\d*\\s*$`, 'i') }
+    }, { projection: { merchantNumber: 1 } }).toArray();
+    const myNums = masterDocs.map(m => (m.merchantNumber||'').trim()).filter(Boolean);
+
+    const allCollections = (await db.listCollections().toArray()).map(c => c.name);
+    const findBTCol = (monthName) => {
+      const mu=monthName.toUpperCase(); const abbr=MONTH_ABBR[mu]||mu;
+      const btCols=allCollections.filter(c=>c.toUpperCase().startsWith('BT_TL_CONNECT'));
+      const sy=String(curYear).slice(-2);
+      const m=btCols.find(c=>{const cu=c.toUpperCase();return (cu.includes(mu)||cu.includes(abbr))&&(cu.includes(String(curYear))||cu.includes(sy));});
+      return m||btCols.find(c=>{const cu=c.toUpperCase();return cu.includes(mu)||cu.includes(abbr);})||null;
+    };
+
+    let runningBalance = 0;
+
+    for (const monthName of pastMonths) {
+      // Received by TL this month (all types)
+      const monthReceived = allPayments
+        .filter(p => {
+          if (!p.createdAt) return false;
+          const d = new Date(p.createdAt);
+          return d.getFullYear() === curYear && MONTH_NAMES[d.getMonth()] === monthName &&
+                 (p.transferTo||'').trim().toLowerCase() === tlName;
+        })
+        .reduce((s, p) => s + (p.amount||0), 0);
+
+      // Sent by TL to others (FSEs + sub-TLs), excluding self-transfers
+      const monthSent = allPayments
+        .filter(p => {
+          if (!p.createdAt) return false;
+          const d = new Date(p.createdAt);
+          const sender   = (p.senderName||'').trim().toLowerCase();
+          const receiver = (p.transferTo||'').trim().toLowerCase();
+          return d.getFullYear() === curYear && MONTH_NAMES[d.getMonth()] === monthName &&
+                 sender === tlName && receiver !== tlName;
+        })
+        .reduce((s, p) => s + (p.amount||0), 0);
+
+      // TL's own BT/RP costs
+      let btAmount = 0, rpCount = 0;
+      const btCol = findBTCol(monthName);
+      if (btCol && myNums.length > 0) {
+        const btDocs = await db.collection(btCol).find(
+          { merchantNumber: { $in: myNums } },
+          { projection: { stage3: 1, rewardPassPro: 1, priorityPassPro: 1 } }
+        ).toArray();
+        btDocs.forEach(r => {
+          btAmount += parseFloat(String(r.stage3||'0').replace(/,/g,''))||0;
+          if ((r.rewardPassPro||r.priorityPassPro||'').toLowerCase()==='active') rpCount++;
+        });
+      }
+      const rpCost = rpCount * 2500;
+      const fee    = Math.round((btAmount > 10000 ? btAmount * 0.015 : 0) * 100) / 100;
+
+      const net = monthReceived - monthSent - rpCost - fee;
+      runningBalance = Math.max(0, runningBalance + net);
+    }
+
+    res.json({ success: true, carryForward: Math.round(runningBalance * 100) / 100 });
+  } catch (err) {
+    console.error('TL carry forward error:', err.message);
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;
