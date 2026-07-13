@@ -1994,7 +1994,7 @@ router.get('/tidebt-annual-bt-summary', verifyToken, async (req, res) => {
 router.get('/tidebt-carry-forward', verifyToken, async (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   try {
-    const tl = await TeamLead.findById(req.user.id).select('name');
+    const tl = await TeamLead.findById(req.user.id).select('name email emailId');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
     const { month, year } = req.query;
@@ -2008,17 +2008,59 @@ router.get('/tidebt-carry-forward', verifyToken, async (req, res) => {
 
     const curYear    = parseInt(year);
     const pastMonths = MONTH_NAMES.slice(0, curMonthIdx);
-    const tlName     = tl.name.trim().toLowerCase();
+    const tlName     = tl.name.trim();
     const escape     = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     const db = mongoose.connection.db;
+
+    // ── Build ALL name variations (same as tidebt-received-payments) ─────────
+    // This handles TLs with short names in DB (e.g. "Niteesh") whose payments
+    // use their full name "Niteesh Kumar Saroj"
+    const nameSet = new Set([tlName.toLowerCase()]);
+
+    // From TideBT_Access tlName field
+    let accessRecs = await db.collection('TideBT_Access').find({
+      tlName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') }
+    }).toArray();
+    if (accessRecs.length === 0) {
+      const fw = tlName.split(' ')[0];
+      accessRecs = await db.collection('TideBT_Access').find({
+        tlName: { $regex: new RegExp(`^\\s*${escape(fw)}\\s*$`, 'i') }
+      }).toArray();
+    }
+    accessRecs.forEach(r => { if (r.tlName) nameSet.add(r.tlName.trim().toLowerCase()); });
+
+    // TL may also appear as fseName in TideBT_Access (dual role like Niteesh)
+    const fseRecs = await db.collection('TideBT_Access').find({
+      fseName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') }
+    }).toArray();
+    fseRecs.forEach(r => { if (r.fseName) nameSet.add(r.fseName.trim().toLowerCase()); });
+
+    // Email-based name lookup from Employees collection
+    const tlEmail = (tl.email || tl.emailId || '').trim();
+    if (tlEmail) {
+      const empRecord = await db.collection('Employees').findOne({
+        $or: [
+          { email: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') } },
+          { newJoinerEmailId: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') } }
+        ]
+      });
+      if (empRecord?.newJoinerName) nameSet.add(empRecord.newJoinerName.trim().toLowerCase());
+    }
+
+    const nameArray = [...nameSet];
+    console.log(`[TL Carry Forward] TL: "${tlName}", name variations: ${JSON.stringify(nameArray)}`);
+    // ──────────────────────────────────────────────────────────────────────────
+
     const allPayments = await db.collection('TideBT_Payments').find({}).toArray();
 
-    // TL's own merchants in bt_master (for BT cost calculation)
+    // TL's own merchants in bt_master — match any name variation
     const masterDocs = await db.collection('bt_master').find({
-      fseName: { $regex: new RegExp(`^\\s*${escape(tl.name.trim())}\\s*\\d*\\s*$`, 'i') }
+      $or: nameArray.map(n => ({
+        fseName: { $regex: new RegExp(`^\\s*${escape(n)}\\s*\\d*\\s*$`, 'i') }
+      }))
     }, { projection: { merchantNumber: 1 } }).toArray();
-    const myNums = masterDocs.map(m => (m.merchantNumber||'').trim()).filter(Boolean);
+    const myNums = [...new Set(masterDocs.map(m => (m.merchantNumber||'').trim()).filter(Boolean))];
 
     const allCollections = (await db.listCollections().toArray()).map(c => c.name);
     const findBTCol = (monthName) => {
@@ -2032,17 +2074,18 @@ router.get('/tidebt-carry-forward', verifyToken, async (req, res) => {
     let runningBalance = 0;
 
     for (const monthName of pastMonths) {
-      // Received by TL this month (all types)
+      // Received by TL this month — match ANY name variation
       const monthReceived = allPayments
         .filter(p => {
           if (!p.createdAt) return false;
           const d = new Date(p.createdAt);
+          const receiver = (p.transferTo||'').trim().toLowerCase();
           return d.getFullYear() === curYear && MONTH_NAMES[d.getMonth()] === monthName &&
-                 (p.transferTo||'').trim().toLowerCase() === tlName;
+                 nameArray.some(n => receiver === n);
         })
         .reduce((s, p) => s + (p.amount||0), 0);
 
-      // Sent by TL to others (FSEs + sub-TLs), excluding self-transfers
+      // Sent by TL to others — match ANY name variation as sender
       const monthSent = allPayments
         .filter(p => {
           if (!p.createdAt) return false;
@@ -2050,7 +2093,8 @@ router.get('/tidebt-carry-forward', verifyToken, async (req, res) => {
           const sender   = (p.senderName||'').trim().toLowerCase();
           const receiver = (p.transferTo||'').trim().toLowerCase();
           return d.getFullYear() === curYear && MONTH_NAMES[d.getMonth()] === monthName &&
-                 sender === tlName && receiver !== tlName;
+                 nameArray.some(n => sender === n) &&
+                 !nameArray.some(n => receiver === n); // exclude self-transfers
         })
         .reduce((s, p) => s + (p.amount||0), 0);
 
@@ -2072,6 +2116,10 @@ router.get('/tidebt-carry-forward', verifyToken, async (req, res) => {
 
       const net = monthReceived - monthSent - rpCost - fee;
       runningBalance = Math.max(0, runningBalance + net);
+
+      if (monthReceived || monthSent || btAmount > 0) {
+        console.log(`  ${monthName}: rcvd=₹${Math.round(monthReceived)} sent=₹${Math.round(monthSent)} bt=₹${Math.round(btAmount)} fee=₹${Math.round(fee)} rpCost=₹${rpCost} → bal=₹${Math.round(runningBalance)}`);
+      }
     }
 
     res.json({ success: true, carryForward: Math.round(runningBalance * 100) / 100 });
