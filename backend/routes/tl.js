@@ -30,8 +30,14 @@ const findConnectCollection = async (db, selectedMonth, selectedYear) => {
   };
   const monthAbbr = MONTH_ABBR[monthUpper] || monthUpper;
 
-  // Only use BT_TL_CONNECT* collections — never tl_connect_*
-  const btCollections = allCollections.filter(c => c.toUpperCase().startsWith('BT_TL_CONNECT'));
+  // Only use BT_TL_CONNECT* collections — prefer canonical uppercase+space format
+  const btCollections = allCollections
+    .filter(c => c.toUpperCase().startsWith('BT_TL_CONNECT'))
+    .sort((a, b) => {
+      const aScore = (a.includes(' ') ? 2 : 0) + (a === a.toUpperCase() ? 1 : 0);
+      const bScore = (b.includes(' ') ? 2 : 0) + (b === b.toUpperCase() ? 1 : 0);
+      return bScore - aScore;
+    });
 
   const matchesMonth = (cu) => cu.includes(monthUpper) || cu.includes(monthAbbr);
 
@@ -156,11 +162,25 @@ router.post('/google-login', async (req, res) => {
       const today = istTime.toISOString().split('T')[0];
 
       const existing = await db.collection('Attendance').findOne({ userId: tl._id, date: today });
+
+      // Look up tlName from TideBT_Access — use this for userName in attendance
+      // so attendance page can match by TideBT_Access.tlName correctly
+      const tlEmail = (tl.email || tl.emailId || '').trim();
+      const escape  = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      let accessTlName = tl.name.trim();
+      const tlAccess = await db.collection('TideBT_Access').findOne({
+        $or: [
+          { tlName: { $regex: new RegExp(`^\\s*${escape(tl.name.trim())}\\s*$`, 'i') } },
+          ...(tlEmail ? [{ fseEmail: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') } }] : [])
+        ]
+      });
+      if (tlAccess?.tlName) accessTlName = tlAccess.tlName.trim();
+
       if (!existing) {
         await db.collection('Attendance').insertOne({
           userId: tl._id,
           userEmail: tl.email,
-          userName: tl.name,
+          userName: accessTlName,
           userType: 'teamlead',
           date: today,
           firstLoginTime: now,
@@ -175,7 +195,7 @@ router.post('/google-login', async (req, res) => {
       } else {
         await db.collection('Attendance').updateOne(
           { userId: tl._id, date: today },
-          { $set: { lastActivityTime: now, lastLogoutTime: null, duration: null }, $inc: { reloginCount: 1 } }
+          { $set: { lastActivityTime: now, lastLogoutTime: null, duration: null, userName: accessTlName }, $inc: { reloginCount: 1 } }
         );
         console.log(`✅ Re-login (TideBT TL): ${tl.email}`);
       }
