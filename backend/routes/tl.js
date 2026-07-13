@@ -1042,17 +1042,20 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
             }
           }
 
-          // Accumulate per FSE
+          // Accumulate per FSE — running balance with proper negative handling.
+          // A month where FSE spent more than received reduces the carry (can't go below 0).
           fseNames.forEach(fseName => {
             const fl = fseName.toLowerCase();
             const recv = mReceivedMap[fl] || 0;
-            if (recv === 0) return;
             const bt   = mBTMap[fl]  || 0;
             const rp   = mRPMap[fl]  || 0;
             const rpCost = rp * 2500;
             const fee  = Math.round((bt > 10000 ? bt * 0.015 : 0) * 100) / 100;
             const left = recv - (rpCost + fee);
-            if (left > 0) fseCarryMap[fl] = (fseCarryMap[fl] || 0) + left;
+            // Only process if there was any activity (received or used)
+            if (recv === 0 && left === 0) return;
+            // Running balance: clamp to 0 (carry can't go negative across months)
+            fseCarryMap[fl] = Math.max(0, (fseCarryMap[fl] || 0) + left);
           });
         }
       }
@@ -2008,9 +2011,9 @@ router.get('/tidebt-annual-bt-summary', verifyToken, async (req, res) => {
   }
 });
 
-// GET /api/tl/tidebt-carry-forward?month=July&year=2026
-// Server-computed carry forward: received - sent_to_others - BT_fee - RP_cost
-// Correctly handles TLs who distribute fund to FSEs.
+// GET /api/tl/tidebt-carry-forward
+// Returns carry-forward from TideBT_OpeningBalances (pre-synced monthly).
+// Only shows data for July 2026 (carry from June). All other months return 0.
 router.get('/tidebt-carry-forward', verifyToken, async (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   try {
@@ -2018,131 +2021,45 @@ router.get('/tidebt-carry-forward', verifyToken, async (req, res) => {
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
     const { month, year } = req.query;
-    if (!month || !year) return res.json({ success: true, carryForward: 0 });
 
-    const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const MONTH_ABBR  = {'JANUARY':'JAN','FEBRUARY':'FEB','MARCH':'MAR','APRIL':'APR','MAY':'MAY','JUNE':'JUN','JULY':'JUL','AUGUST':'AUG','SEPTEMBER':'SEP','OCTOBER':'OCT','NOVEMBER':'NOV','DECEMBER':'DEC'};
-
-    const curMonthIdx = MONTH_NAMES.indexOf(month);
-    if (curMonthIdx <= 0) return res.json({ success: true, carryForward: 0 });
-
-    const curYear    = parseInt(year);
-    const pastMonths = MONTH_NAMES.slice(0, curMonthIdx);
-    const tlName     = tl.name.trim();
-    const escape     = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Opening balances are only synced for July 2026 — other months return 0
+    const OPENING_BALANCE_MONTH = 'July';
+    const OPENING_BALANCE_YEAR  = 2026;
+    if (month !== OPENING_BALANCE_MONTH || parseInt(year) !== OPENING_BALANCE_YEAR) {
+      return res.json({ success: true, carryForward: 0 });
+    }
 
     const db = mongoose.connection.db;
+    const tlName = tl.name.trim();
+    const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // ── Build ALL name variations (same as tidebt-received-payments) ─────────
-    // This handles TLs with short names in DB (e.g. "Niteesh") whose payments
-    // use their full name "Niteesh Kumar Saroj"
-    const nameSet = new Set([tlName.toLowerCase()]);
-
-    // From TideBT_Access tlName field
-    let accessRecs = await db.collection('TideBT_Access').find({
-      tlName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') }
+    // Build name variations (TL may be stored under different names)
+    const nameVariations = new Set([tlName.toLowerCase()]);
+    const accessRecs = await db.collection('TideBT_Access').find({
+      $or: [
+        { tlName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') } },
+        { fseName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') } }
+      ]
     }).toArray();
-    if (accessRecs.length === 0) {
-      const fw = tlName.split(' ')[0];
-      accessRecs = await db.collection('TideBT_Access').find({
-        tlName: { $regex: new RegExp(`^\\s*${escape(fw)}\\s*$`, 'i') }
-      }).toArray();
-    }
-    accessRecs.forEach(r => { if (r.tlName) nameSet.add(r.tlName.trim().toLowerCase()); });
+    accessRecs.forEach(r => {
+      if (r.tlName) nameVariations.add(r.tlName.trim().toLowerCase());
+      if (r.fseName) nameVariations.add(r.fseName.trim().toLowerCase());
+    });
 
-    // TL may also appear as fseName in TideBT_Access (dual role like Niteesh)
-    const fseRecs = await db.collection('TideBT_Access').find({
-      fseName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') }
-    }).toArray();
-    fseRecs.forEach(r => { if (r.fseName) nameSet.add(r.fseName.trim().toLowerCase()); });
-
-    // Email-based name lookup from Employees collection
-    const tlEmail = (tl.email || tl.emailId || '').trim();
-    if (tlEmail) {
-      const empRecord = await db.collection('Employees').findOne({
-        $or: [
-          { email: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') } },
-          { newJoinerEmailId: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') } }
-        ]
+    // Look up in TideBT_OpeningBalances — try all name variations
+    let carryForward = 0;
+    for (const nameLower of nameVariations) {
+      const record = await db.collection('TideBT_OpeningBalances').findOne({
+        name: { $regex: new RegExp(`^\\s*${escape(nameLower)}\\s*$`, 'i') }
       });
-      if (empRecord?.newJoinerName) nameSet.add(empRecord.newJoinerName.trim().toLowerCase());
-    }
-
-    const nameArray = [...nameSet];
-    console.log(`[TL Carry Forward] TL: "${tlName}", name variations: ${JSON.stringify(nameArray)}`);
-    // ──────────────────────────────────────────────────────────────────────────
-
-    const allPayments = await db.collection('TideBT_Payments').find({}).toArray();
-
-    // TL's own merchants in bt_master — match any name variation
-    const masterDocs = await db.collection('bt_master').find({
-      $or: nameArray.map(n => ({
-        fseName: { $regex: new RegExp(`^\\s*${escape(n)}\\s*\\d*\\s*$`, 'i') }
-      }))
-    }, { projection: { merchantNumber: 1 } }).toArray();
-    const myNums = [...new Set(masterDocs.map(m => (m.merchantNumber||'').trim()).filter(Boolean))];
-
-    const allCollections = (await db.listCollections().toArray()).map(c => c.name);
-    const findBTCol = (monthName) => {
-      const mu=monthName.toUpperCase(); const abbr=MONTH_ABBR[mu]||mu;
-      const btCols=allCollections.filter(c=>c.toUpperCase().startsWith('BT_TL_CONNECT'));
-      const sy=String(curYear).slice(-2);
-      const m=btCols.find(c=>{const cu=c.toUpperCase();return (cu.includes(mu)||cu.includes(abbr))&&(cu.includes(String(curYear))||cu.includes(sy));});
-      return m||btCols.find(c=>{const cu=c.toUpperCase();return cu.includes(mu)||cu.includes(abbr);})||null;
-    };
-
-    let runningBalance = 0;
-
-    for (const monthName of pastMonths) {
-      // Received by TL this month — match ANY name variation
-      const monthReceived = allPayments
-        .filter(p => {
-          if (!p.createdAt) return false;
-          const d = new Date(p.createdAt);
-          const receiver = (p.transferTo||'').trim().toLowerCase();
-          return d.getFullYear() === curYear && MONTH_NAMES[d.getMonth()] === monthName &&
-                 nameArray.some(n => receiver === n);
-        })
-        .reduce((s, p) => s + (p.amount||0), 0);
-
-      // Sent by TL to others — match ANY name variation as sender
-      const monthSent = allPayments
-        .filter(p => {
-          if (!p.createdAt) return false;
-          const d = new Date(p.createdAt);
-          const sender   = (p.senderName||'').trim().toLowerCase();
-          const receiver = (p.transferTo||'').trim().toLowerCase();
-          return d.getFullYear() === curYear && MONTH_NAMES[d.getMonth()] === monthName &&
-                 nameArray.some(n => sender === n) &&
-                 !nameArray.some(n => receiver === n); // exclude self-transfers
-        })
-        .reduce((s, p) => s + (p.amount||0), 0);
-
-      // TL's own BT/RP costs
-      let btAmount = 0, rpCount = 0;
-      const btCol = findBTCol(monthName);
-      if (btCol && myNums.length > 0) {
-        const btDocs = await db.collection(btCol).find(
-          { merchantNumber: { $in: myNums } },
-          { projection: { stage3: 1, rewardPassPro: 1, priorityPassPro: 1 } }
-        ).toArray();
-        btDocs.forEach(r => {
-          btAmount += parseFloat(String(r.stage3||'0').replace(/,/g,''))||0;
-          if ((r.rewardPassPro||r.priorityPassPro||'').toLowerCase()==='active') rpCount++;
-        });
-      }
-      const rpCost = rpCount * 2500;
-      const fee    = Math.round((btAmount > 10000 ? btAmount * 0.015 : 0) * 100) / 100;
-
-      const net = monthReceived - monthSent - rpCost - fee;
-      runningBalance = Math.max(0, runningBalance + net);
-
-      if (monthReceived || monthSent || btAmount > 0) {
-        console.log(`  ${monthName}: rcvd=₹${Math.round(monthReceived)} sent=₹${Math.round(monthSent)} bt=₹${Math.round(btAmount)} fee=₹${Math.round(fee)} rpCost=₹${rpCost} → bal=₹${Math.round(runningBalance)}`);
+      if (record && (record.openingBalance || 0) > 0) {
+        carryForward = Math.round(record.openingBalance);
+        console.log(`[Carry Forward TL] "${tlName}" → "${record.name}": ₹${carryForward}`);
+        break;
       }
     }
 
-    res.json({ success: true, carryForward: Math.round(runningBalance * 100) / 100 });
+    res.json({ success: true, carryForward });
   } catch (err) {
     console.error('TL carry forward error:', err.message);
     res.status(500).json({ message: err.message });

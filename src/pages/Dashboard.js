@@ -157,8 +157,8 @@ export default function Dashboard() {
   const withdrawAmount = filteredMyForms.filter(f => f.formType === 'mobikwik-withdraw').reduce((s, f) => s + (f.withdrawAmount || 0), 0);
   const withdrawFees = Math.round(withdrawAmount * 0.03 * 100) / 100;
   const totalUsed = fundUsedRP + fee + withdrawFees;
-  // Fund with TL = Received - Sent to FSEs (minimum 0)
-  const fundWithTL = Math.max(0, totalFund - sentToFSEs);
+  // Fund with TL = Received - Sent to FSEs (NOT clamped — negative means net return to admin)
+  const fundWithTL = totalFund - sentToFSEs;
   // My Fund = only what TL explicitly transferred to self
   const myFund = selfTransferred;
   // Fund Left = My Fund - Used
@@ -1143,10 +1143,10 @@ export default function Dashboard() {
             <div style={{ fontSize: 14, fontWeight: 800, color: '#388e3c' }}>₹{sentToFSEs.toLocaleString()}</div>
             <div style={{ fontSize: 8, color: '#888', marginTop: 2 }}>Tap for details ↓</div>
           </div>
-          <div style={{ background: '#e0f7fa', borderRadius: 12, padding: '12px 10px', textAlign: 'center', border: '1.5px solid #0097a730' }}>
+          <div style={{ background: fundWithTL < 0 ? '#fdecea' : '#e0f7fa', borderRadius: 12, padding: '12px 10px', textAlign: 'center', border: `1.5px solid ${fundWithTL < 0 ? '#c6282830' : '#0097a730'}` }}>
             <div style={{ fontSize: 8, fontWeight: 600, color: '#888', textTransform: 'uppercase', marginBottom: 2 }}>Fund with TL</div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: '#00695c' }}>₹{fundWithTL.toLocaleString()}</div>
-            <div style={{ fontSize: 8, color: '#888', marginTop: 2 }}>Received − Sent</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: fundWithTL < 0 ? '#c62828' : '#00695c' }}>₹{fundWithTL.toLocaleString()}</div>
+            <div style={{ fontSize: 8, color: '#888', marginTop: 2 }}>{fundWithTL < 0 ? 'Net return to admin' : 'Received − Sent'}</div>
           </div>
           <div style={{ background: myFund < 0 ? '#fdecea' : '#fff8e1', borderRadius: 12, padding: '12px 10px', textAlign: 'center', border: `1.5px solid ${myFund < 0 ? '#c6282830' : '#f9a82530'}` }}>
             <div style={{ fontSize: 8, fontWeight: 600, color: '#888', textTransform: 'uppercase', marginBottom: 2 }}>My Fund</div>
