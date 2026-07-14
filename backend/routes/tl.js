@@ -2033,23 +2033,30 @@ router.get('/tidebt-carry-forward', verifyToken, async (req, res) => {
     const tlName = tl.name.trim();
     const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // Build name variations (TL may be stored under different names)
+    // Build TL name variations — only the TL's OWN names, not their FSEs' names.
+    // Query TideBT_Access for records where THIS TL is the tlName to find canonical tlName spellings.
+    // Do NOT add fseName of team members — that contaminates the lookup with FSE balances.
     const nameVariations = new Set([tlName.toLowerCase()]);
     const accessRecs = await db.collection('TideBT_Access').find({
-      $or: [
-        { tlName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') } },
-        { fseName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') } }
-      ]
+      tlName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') }
     }).toArray();
     accessRecs.forEach(r => {
       if (r.tlName) nameVariations.add(r.tlName.trim().toLowerCase());
+    });
+    // Also check if TL appears as their own fseName (some TLs are also FSEs, e.g. Niteesh Kumar Saroj)
+    // but only add names that match the TL exactly — not team members' fseNames
+    const selfFseRecs = await db.collection('TideBT_Access').find({
+      fseName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') }
+    }).toArray();
+    selfFseRecs.forEach(r => {
       if (r.fseName) nameVariations.add(r.fseName.trim().toLowerCase());
     });
 
-    // Look up in TideBT_OpeningBalances — try all name variations
+    // Look up in TideBT_OpeningBalances — ONLY TL-type records to avoid picking up FSE balances
     let carryForward = 0;
     for (const nameLower of nameVariations) {
       const record = await db.collection('TideBT_OpeningBalances').findOne({
+        type: 'TL', // strict: only TL records, never FSE records
         name: { $regex: new RegExp(`^\\s*${escape(nameLower)}\\s*$`, 'i') }
       });
       if (record && (record.openingBalance || 0) > 0) {
