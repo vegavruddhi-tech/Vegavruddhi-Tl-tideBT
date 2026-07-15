@@ -12,46 +12,28 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Helper to find the connect collection dynamically based on selectedMonth and selectedYear
 const findConnectCollection = async (db, selectedMonth, selectedYear) => {
-  // If no month selected — do NOT fall back to latest collection
-  // Return null so callers show ₹0 instead of wrong month's data
   if (!selectedMonth) return null;
 
   const allCollections = (await db.listCollections().toArray()).map(c => c.name);
-  
-  const monthUpper = selectedMonth.toUpperCase();
-  const yearStr = selectedYear ? String(selectedYear) : null;
-  const shortYear = yearStr ? yearStr.slice(-2) : null;
-
-  // Month abbreviation map — handles both full names and 3-letter abbreviations
+  const mu = selectedMonth.toUpperCase();
   const MONTH_ABBR = {
     'JANUARY': 'JAN', 'FEBRUARY': 'FEB', 'MARCH': 'MAR', 'APRIL': 'APR',
     'MAY': 'MAY', 'JUNE': 'JUN', 'JULY': 'JUL', 'AUGUST': 'AUG',
     'SEPTEMBER': 'SEP', 'OCTOBER': 'OCT', 'NOVEMBER': 'NOV', 'DECEMBER': 'DEC'
   };
-  const monthAbbr = MONTH_ABBR[monthUpper] || monthUpper;
+  const abbr = MONTH_ABBR[mu] || mu;
 
-  // Only use BT_TL_CONNECT* collections — prefer canonical uppercase+space format
-  const btCollections = allCollections
-    .filter(c => c.toUpperCase().startsWith('BT_TL_CONNECT'))
-    .sort((a, b) => {
-      const aScore = (a.includes(' ') ? 2 : 0) + (a === a.toUpperCase() ? 1 : 0);
-      const bScore = (b.includes(' ') ? 2 : 0) + (b === b.toUpperCase() ? 1 : 0);
-      return bScore - aScore;
-    });
+  // Try canonical hardcoded format first: "BT_TL_CONNECT JULY"
+  const canonical = `BT_TL_CONNECT ${mu}`;
+  if (allCollections.includes(canonical)) return canonical;
 
-  const matchesMonth = (cu) => cu.includes(monthUpper) || cu.includes(monthAbbr);
+  // Try abbreviation: "BT_TL_CONNECT JUL"
+  const canonicalAbbr = `BT_TL_CONNECT ${abbr}`;
+  if (allCollections.includes(canonicalAbbr)) return canonicalAbbr;
 
-  if (yearStr) {
-    const match = btCollections.find(c => {
-      const cu = c.toUpperCase();
-      return matchesMonth(cu) && (cu.includes(yearStr) || cu.includes(shortYear));
-    });
-    if (match) return match;
-  }
-  const match = btCollections.find(c => matchesMonth(c.toUpperCase()));
-  if (match) return match;
-
-  return null;
+  // Fallback: any BT_TL_CONNECT collection that matches the month
+  const btCols = allCollections.filter(c => c.toUpperCase().startsWith('BT_TL_CONNECT'));
+  return btCols.find(c => { const cu = c.toUpperCase(); return cu.includes(mu) || cu.includes(abbr); }) || null;
 };
 
 // Helper to normalize the dynamic document format
