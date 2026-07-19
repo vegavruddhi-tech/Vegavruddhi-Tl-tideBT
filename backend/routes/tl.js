@@ -306,7 +306,7 @@ router.get('/tidebt-team-forms', verifyToken, async (req, res) => {
 // POST /api/tl/bt-payment - Save a BT payment
 router.post('/bt-payment', verifyToken, async (req, res) => {
   try {
-    const tl = await TeamLead.findById(req.user.id).select('name');
+    const tl = await TeamLead.findById(req.user.id).select('name email emailId');
     if (!tl) return res.status(404).json({ message: 'Team Lead not found' });
 
     const { transferToWhom, transferTo, amount, paymentDoneOn } = req.body;
@@ -314,9 +314,44 @@ router.post('/bt-payment', verifyToken, async (req, res) => {
     const db = mongoose.connection.db;
     const TideBTPayments = db.collection('TideBT_Payments');
 
+    // ── Resolve canonical senderName from TideBT_Access ──────────────────
+    // TL portal name (tl.name) may differ from fund sheet name (TideBT_Access.tlName)
+    // e.g. portal: "Rohit Kumar" but sheet: "Rohit" — use sheet name so fund tracker matches
+    const tlPortalName = tl.name.trim();
+    const tlEmail      = (tl.email || tl.emailId || '').trim();
+    const escape       = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let canonicalName  = tlPortalName; // fallback to portal name
+
+    try {
+      // Try exact name match first
+      let accessRecord = await db.collection('TideBT_Access').findOne({
+        tlName: { $regex: new RegExp(`^\\s*${escape(tlPortalName)}\\s*$`, 'i') }
+      });
+      // Fallback: match by email
+      if (!accessRecord && tlEmail) {
+        accessRecord = await db.collection('TideBT_Access').findOne({
+          fseEmail: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') }
+        });
+      }
+      // Fallback: first-word match
+      if (!accessRecord) {
+        const firstWord = tlPortalName.split(' ')[0];
+        accessRecord = await db.collection('TideBT_Access').findOne({
+          tlName: { $regex: new RegExp(`^\\s*${escape(firstWord)}\\s*$`, 'i') }
+        });
+      }
+      if (accessRecord?.tlName) {
+        canonicalName = accessRecord.tlName.trim();
+        console.log(`[BT Payment] TL name resolved: "${tlPortalName}" → "${canonicalName}"`);
+      }
+    } catch (nameErr) {
+      console.warn('[BT Payment] Name resolution failed (non-fatal):', nameErr.message);
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     const payment = {
       transferToWhom,
-      senderName: tl.name,
+      senderName: canonicalName, // use fund-sheet canonical name, not portal name
       transferTo,
       amount: Number(amount),
       paymentDoneOn,
@@ -836,7 +871,11 @@ router.get('/tidebt-sent-payments', verifyToken, async (req, res) => {
     const tlNamesArray = [...tlNameSet];
 
     const payments = await db.collection('TideBT_Payments')
-      .find({ senderName: { $regex: new RegExp(escape(tlName), 'i') } })
+      .find({
+        $or: tlNamesArray.map(n => ({
+          senderName: { $regex: new RegExp(`^\\s*${escape(n)}\\s*$`, 'i') }
+        }))
+      })
       .sort({ createdAt: -1 })
       .toArray();
 
@@ -865,7 +904,7 @@ router.get('/tidebt-sent-payments', verifyToken, async (req, res) => {
 // Uses BT_TL_CONNECT (selected month) as BT/RP source — TideBT_RewardPass is empty
 router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
   try {
-    const tl = await TeamLead.findById(req.user.id).select('name');
+    const tl = await TeamLead.findById(req.user.id).select('name email emailId');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
     const { dateFilter, selectedYear, selectedMonth } = req.query;
@@ -874,8 +913,30 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     if (cached) return res.json(cached);
 
     const db = mongoose.connection.db;
-    const tlName = tl.name.trim();
+    const tlPortalName = tl.name.trim();
+    const tlEmail      = (tl.email || tl.emailId || '').trim();
     const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // ── Resolve canonical tlName from TideBT_Access ───────────────────────
+    let tlName = tlPortalName;
+    try {
+      let ar = await db.collection('TideBT_Access').findOne({
+        tlName: { $regex: new RegExp(`^\\s*${escape(tlPortalName)}\\s*$`, 'i') }
+      });
+      if (!ar && tlEmail) {
+        ar = await db.collection('TideBT_Access').findOne({
+          fseEmail: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') }
+        });
+      }
+      if (!ar) {
+        const fw = tlPortalName.split(' ')[0];
+        ar = await db.collection('TideBT_Access').findOne({
+          tlName: { $regex: new RegExp(`^\\s*${escape(fw)}\\s*$`, 'i') }
+        });
+      }
+      if (ar?.tlName) tlName = ar.tlName.trim();
+    } catch {}
+    // ─────────────────────────────────────────────────────────────────────
 
     // Get FSE names under this TL
     let records = await db.collection('TideBT_Access').find({
