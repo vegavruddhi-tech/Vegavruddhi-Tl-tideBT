@@ -326,6 +326,10 @@ router.post('/bt-payment', verifyToken, async (req, res) => {
 
     await TideBTPayments.insertOne(payment);
 
+    // Clear TL payment caches so fresh data loads next time
+    await cacheInvalidatePattern(`TL_SENT_PAYMENTS:${tl._id.toString()}*`);
+    await cacheInvalidatePattern(`TL_PAYMENTS:${tl._id.toString()}*`);
+
     res.status(201).json({ message: 'Payment recorded successfully', payment });
   } catch (err) {
     console.error('BT Payment error:', err.message);
