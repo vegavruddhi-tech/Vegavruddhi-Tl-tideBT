@@ -153,18 +153,17 @@ router.post('/google-login', async (req, res) => {
       const firstWord  = accessTlName.split(' ')[0];
       const tlAccess = await db.collection('TideBT_Access').findOne({
         $or: [
+          // PRIMARY: match by tlEmail (most reliable — email never changes)
+          ...(tlEmail ? [{ tlEmail: tlEmail.toLowerCase() }] : []),
+          // FALLBACK: match by tlName exact
           { tlName: { $regex: new RegExp(`^\\s*${escape(accessTlName)}\\s*$`, 'i') } },
+          // FALLBACK: first-word match
           { tlName: { $regex: new RegExp(`^\\s*${escape(firstWord)}\\s*$`, 'i') } },
-          ...(tlEmail ? [{ fseEmail: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') } }] : [])
         ]
       });
       if (tlAccess?.tlName) {
         accessTlName = tlAccess.tlName.trim();
-        // ── Auto-heal: update TeamLeads.name to canonical so portal shows correct name
-        if (accessTlName !== tl.name.trim()) {
-          await TeamLead.updateOne({ _id: tl._id }, { $set: { name: accessTlName } });
-          console.log(`[Login] Auto-fixed TeamLeads.name: "${tl.name}" → "${accessTlName}"`);
-        }
+        // NOTE: Do NOT update TeamLeads.name — TideBT_Access is the source of truth
       }
 
       if (!existing) {
@@ -210,24 +209,21 @@ router.get('/profile', verifyToken, async (req, res) => {
 
     // ── Override name with canonical TideBT_Access.tlName ─────────────────
     // TideBT_Access.tlName is the source of truth for the TL's display name.
-    // TeamLeads.name may differ (e.g. "Rohit Kumar" vs "Rohit") — always
-    // resolve from TideBT_Access so the portal shows the correct canonical name.
+    // TeamLeads.name may differ — always resolve from TideBT_Access.
+    // PRIMARY lookup: by tlEmail (most reliable)
+    // FALLBACK: by tlName exact → first-word match
     try {
       const db      = mongoose.connection.db;
       const escape  = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const tlEmail = (tl.email || tl.emailId || '').trim();
+      const tlEmail = (tl.email || tl.emailId || '').trim().toLowerCase();
       const portalName = tl.name.trim();
       const firstWord  = portalName.split(' ')[0];
 
-      // Strategy 1: exact portal name match
-      // Strategy 2: first-word match (e.g. "Rohit Kumar" → matches "Rohit")
-      // Strategy 3: TL email matches an FSE email in TideBT_Access
-      // (handles cases where TL is also registered as FSE)
-      let accessRecord = await db.collection('TideBT_Access').findOne({
+      const accessRecord = await db.collection('TideBT_Access').findOne({
         $or: [
+          ...(tlEmail ? [{ tlEmail: tlEmail }] : []),
           { tlName: { $regex: new RegExp(`^\\s*${escape(portalName)}\\s*$`, 'i') } },
           { tlName: { $regex: new RegExp(`^\\s*${escape(firstWord)}\\s*$`, 'i') } },
-          ...(tlEmail ? [{ fseEmail: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') } }] : [])
         ]
       });
 
@@ -235,7 +231,7 @@ router.get('/profile', verifyToken, async (req, res) => {
         const canonical = accessRecord.tlName.trim();
         const tlObj = tl.toObject();
         tlObj.name = canonical;
-        console.log(`[Profile] Canonical name resolved: "${portalName}" → "${canonical}"`);
+        console.log(`[Profile] Canonical name: "${portalName}" → "${canonical}" (via ${accessRecord.tlEmail ? 'email' : 'name'})`);
         return res.json(tlObj);
       }
     } catch (nameErr) {
@@ -361,30 +357,22 @@ router.post('/bt-payment', verifyToken, async (req, res) => {
 
     // ── Resolve canonical senderName from TideBT_Access ──────────────────
     // TL portal name (tl.name) may differ from fund sheet name (TideBT_Access.tlName)
-    // e.g. portal: "Rohit Kumar" but sheet: "Rohit" — use sheet name so fund tracker matches
+    // PRIMARY: match by tlEmail — most reliable, email never changes
+    // FALLBACK: name-based match
     const tlPortalName = tl.name.trim();
-    const tlEmail      = (tl.email || tl.emailId || '').trim();
+    const tlEmail      = (tl.email || tl.emailId || '').trim().toLowerCase();
     const escape       = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     let canonicalName  = tlPortalName; // fallback to portal name
 
     try {
-      // Try exact name match first
-      let accessRecord = await db.collection('TideBT_Access').findOne({
-        tlName: { $regex: new RegExp(`^\\s*${escape(tlPortalName)}\\s*$`, 'i') }
+      const firstWord = tlPortalName.split(' ')[0];
+      const accessRecord = await db.collection('TideBT_Access').findOne({
+        $or: [
+          ...(tlEmail ? [{ tlEmail: tlEmail }] : []),
+          { tlName: { $regex: new RegExp(`^\\s*${escape(tlPortalName)}\\s*$`, 'i') } },
+          { tlName: { $regex: new RegExp(`^\\s*${escape(firstWord)}\\s*$`, 'i') } },
+        ]
       });
-      // Fallback: match by email
-      if (!accessRecord && tlEmail) {
-        accessRecord = await db.collection('TideBT_Access').findOne({
-          fseEmail: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') }
-        });
-      }
-      // Fallback: first-word match
-      if (!accessRecord) {
-        const firstWord = tlPortalName.split(' ')[0];
-        accessRecord = await db.collection('TideBT_Access').findOne({
-          tlName: { $regex: new RegExp(`^\\s*${escape(firstWord)}\\s*$`, 'i') }
-        });
-      }
       if (accessRecord?.tlName) {
         canonicalName = accessRecord.tlName.trim();
         console.log(`[BT Payment] TL name resolved: "${tlPortalName}" → "${canonicalName}"`);
