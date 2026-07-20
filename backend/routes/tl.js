@@ -198,6 +198,32 @@ router.get('/profile', verifyToken, async (req, res) => {
   try {
     const tl = await TeamLead.findById(req.user.id).select('-password');
     if (!tl) return res.status(404).json({ message: 'Team Lead not found' });
+
+    // ── Override name with canonical TideBT_Access.tlName ─────────────────
+    // This ensures the portal always shows the sheet-canonical name
+    // (e.g. "Rohit" instead of any old "Rohit Kumar" leftover)
+    try {
+      const db = mongoose.connection.db;
+      const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const tlEmail = (tl.email || tl.emailId || '').trim();
+      const accessRecord = await db.collection('TideBT_Access').findOne({
+        $or: [
+          { tlName: { $regex: new RegExp(`^\\s*${escape(tl.name.trim())}\\s*$`, 'i') } },
+          ...(tlEmail ? [{ fseEmail: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') } }] : [])
+        ]
+      });
+      if (accessRecord?.tlName) {
+        const canonical = accessRecord.tlName.trim();
+        // Return a plain object with name replaced by canonical
+        const tlObj = tl.toObject();
+        tlObj.name = canonical;
+        return res.json(tlObj);
+      }
+    } catch (nameErr) {
+      console.warn('[Profile] Canonical name lookup failed (non-fatal):', nameErr.message);
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
     res.json(tl);
   } catch (err) {
     res.status(500).json({ message: err.message });
