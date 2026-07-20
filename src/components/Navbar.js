@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-export default function Navbar({ tl }) {
+export default function Navbar({ tl, teamBT, teamRP, yesterdaysBT }) {
   const [open, setOpen] = useState(false);
   const ref = useRef();
   const navigate = useNavigate();
@@ -22,6 +22,13 @@ export default function Navbar({ tl }) {
     ? tl.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : '?';
 
+  // Stats chips to show alongside TL name
+  const chips = [
+    teamBT    != null && { label: `BT ₹${Number(teamBT).toLocaleString()}`,        color: '#1a5c38', bg: '#e6f4ea' },
+    teamRP    != null && { label: `RP ${teamRP}`,                                   color: '#7c3aed', bg: '#ede9fe' },
+    yesterdaysBT != null && { label: `Yest BT ₹${Number(yesterdaysBT).toLocaleString()}`, color: '#0369a1', bg: '#e0f2fe' },
+  ].filter(Boolean);
+
   return (
     <nav className="navbar">
       <div className="nav-logo">
@@ -32,6 +39,23 @@ export default function Navbar({ tl }) {
           Tide BT
         </span>
       </div>
+
+      {/* Stats chips — team BT, RP, Yesterday BT */}
+      {chips.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap', overflow: 'hidden', marginLeft: 8 }}>
+          {chips.map((chip, i) => (
+            <span key={i} style={{
+              background: chip.bg, color: chip.color,
+              padding: '3px 8px', borderRadius: 20,
+              fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
+              letterSpacing: '0.2px'
+            }}>
+              {chip.label}
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="nav-right">
         <div className="nav-profile" ref={ref} onClick={(e) => { if (e.target.closest('a')) return; setOpen(p => !p); }}>
           <div className="nav-avatar">

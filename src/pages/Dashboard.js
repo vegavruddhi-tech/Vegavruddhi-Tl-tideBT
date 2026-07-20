@@ -861,7 +861,12 @@ export default function Dashboard() {
 
   return (
     <>
-      <Navbar tl={tl} />
+      <Navbar
+        tl={tl}
+        teamBT={btPerf?.btAmount ?? null}
+        teamRP={btPerf?.rewardPassCount ?? null}
+        yesterdaysBT={btPerf?.yesterdaysBT ?? null}
+      />
       <div className="main-content">
         <ImpersonationBanner
           isImpersonating={isImpersonating}
@@ -1102,6 +1107,121 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        {/* ── Team Performance Card ── */}
+        {(() => {
+          const fseData = teamPerformance?.fseData || [];
+          const teamTarget = teamPerformance?.teamTarget || 0;
+          const teamBT = teamPerformance?.btCompleted || 0;
+          const teamPct = teamTarget > 0 ? Math.min(100, Math.round((teamBT / teamTarget) * 100)) : 0;
+          return (
+            <div style={{ background: '#fff', borderRadius: 14, border: '1.5px solid #e8f3ed', padding: '16px', marginBottom: 20, boxShadow: '0 2px 8px rgba(26,71,49,0.05)' }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 20 }}>📊</span>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: '#1a4731' }}>Team Performance</div>
+                    <div style={{ fontSize: 10, color: '#888' }}>{selectedMonth} {selectedYear}</div>
+                  </div>
+                </div>
+                {teamTarget > 0 && (
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 10, color: '#888', fontWeight: 600 }}>TEAM TARGET</div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: '#1a4731' }}>₹{teamTarget.toLocaleString()}</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Team BT progress bar */}
+              {teamTarget > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#555', marginBottom: 4 }}>
+                    <span>Team BT Done: <b style={{ color: '#2e7d32' }}>₹{teamBT.toLocaleString()}</b></span>
+                    <span style={{ fontWeight: 700, color: teamPct >= 100 ? '#2e7d32' : teamPct >= 70 ? '#f59e0b' : '#ef4444' }}>{teamPct}%</span>
+                  </div>
+                  <div style={{ height: 8, background: '#e8f3ed', borderRadius: 99, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${teamPct}%`, background: teamPct >= 100 ? '#2e7d32' : teamPct >= 70 ? '#f59e0b' : '#ef4444', borderRadius: 99, transition: 'width 0.6s' }} />
+                  </div>
+                  <div style={{ fontSize: 10, color: '#888', marginTop: 3 }}>
+                    Remaining: ₹{Math.max(0, teamTarget - teamBT).toLocaleString()}
+                  </div>
+                </div>
+              )}
+
+              {/* Per-FSE rows */}
+              {fseData.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#aaa', fontSize: 12, padding: '16px 0' }}>
+                  No performance data for {selectedMonth}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {/* Column headers */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 70px 50px', gap: 4, padding: '0 4px', fontSize: 9, fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <span>FSE Name</span>
+                    <span style={{ textAlign: 'right' }}>BT Done</span>
+                    <span style={{ textAlign: 'right' }}>Target</span>
+                    <span style={{ textAlign: 'right' }}>%</span>
+                  </div>
+                  {fseData.map((fse, idx) => {
+                    const pct = fse.btTarget > 0 ? Math.min(100, Math.round((fse.btCompleted / fse.btTarget) * 100)) : 0;
+                    const barColor = pct >= 100 ? '#2e7d32' : pct >= 70 ? '#f59e0b' : pct >= 40 ? '#3b82f6' : '#ef4444';
+                    const initials = fse.fseName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+                    return (
+                      <div key={idx} style={{ background: '#f8fdf9', borderRadius: 10, padding: '10px 12px', border: '1px solid #e8f3ed' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 70px 50px', gap: 4, alignItems: 'center', marginBottom: 6 }}>
+                          {/* FSE name */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                            <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg, #1a4731, #2d7a4f)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                              {initials}
+                            </div>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#1a4731', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fse.fseName}</span>
+                          </div>
+                          {/* BT Done */}
+                          <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 800, color: '#2e7d32' }}>
+                            ₹{(fse.btCompleted || 0).toLocaleString()}
+                          </div>
+                          {/* Target */}
+                          <div style={{ textAlign: 'right', fontSize: 11, color: '#555' }}>
+                            {fse.btTarget > 0 ? `₹${fse.btTarget.toLocaleString()}` : <span style={{ color: '#bbb' }}>–</span>}
+                          </div>
+                          {/* % */}
+                          <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 800, color: barColor }}>
+                            {fse.btTarget > 0 ? `${pct}%` : <span style={{ color: '#bbb' }}>–</span>}
+                          </div>
+                        </div>
+                        {/* Progress bar */}
+                        {fse.btTarget > 0 && (
+                          <div style={{ height: 5, background: '#e0e0e0', borderRadius: 99, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 99, transition: 'width 0.5s' }} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Totals row */}
+                  {fseData.length > 1 && (
+                    <div style={{ background: '#e6f4ea', borderRadius: 10, padding: '10px 12px', border: '1.5px solid #a5d6a7', display: 'grid', gridTemplateColumns: '1fr 80px 70px 50px', gap: 4, alignItems: 'center' }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#1a4731' }}>🏆 Total</div>
+                      <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 800, color: '#2e7d32' }}>
+                        ₹{fseData.reduce((s, f) => s + (f.btCompleted || 0), 0).toLocaleString()}
+                      </div>
+                      <div style={{ textAlign: 'right', fontSize: 11, color: '#555' }}>
+                        {fseData.some(f => f.btTarget > 0)
+                          ? `₹${fseData.reduce((s, f) => s + (f.btTarget || 0), 0).toLocaleString()}`
+                          : '–'}
+                      </div>
+                      <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 800, color: teamPct >= 100 ? '#2e7d32' : '#f59e0b' }}>
+                        {teamTarget > 0 ? `${teamPct}%` : '–'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* My Fund Summary */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 24, marginBottom: 12 }}>
