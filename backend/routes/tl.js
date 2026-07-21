@@ -1080,7 +1080,23 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     };
 
     const fseCarryMap = {}; // fseName.toLowerCase() → cumulative carry
-    if (selectedMonth && selectedYear) {
+
+    // ── For July 2026: use TideBT_OpeningBalances as carry source (same as admin panel) ──
+    const OPENING_BALANCE_MONTH = 'July';
+    const OPENING_BALANCE_YEAR  = 2026;
+
+    if (selectedMonth === OPENING_BALANCE_MONTH && parseInt(selectedYear) === OPENING_BALANCE_YEAR) {
+      const openingBalances = await db.collection('TideBT_OpeningBalances').find({}).toArray();
+      openingBalances.forEach(b => {
+        const nameLower = (b.name || '').trim().toLowerCase();
+        if (!nameLower || (b.openingBalance || 0) <= 0) return;
+        // Only apply FSE-type opening balances for FSE fund tracker
+        if ((b.type || '').toUpperCase() === 'FSE') {
+          fseCarryMap[nameLower] = Math.round(b.openingBalance);
+        }
+      });
+      console.log(`[TL Fund Tracker] Loaded ${Object.keys(fseCarryMap).length} FSE opening balances for July 2026`);
+    } else if (selectedMonth && selectedYear) {
       const curYear     = parseInt(selectedYear);
       const curMonthIdx = MONTHS.indexOf(selectedMonth);
       if (curMonthIdx > 0) {
@@ -1146,7 +1162,7 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
           });
         }
       }
-    }
+    } // end else if (selectedMonth && selectedYear)
 
     // Build tracker per FSE using BT_TL_CONNECT for BT/RP
     const tracker = fseNames.map(fseName => {
