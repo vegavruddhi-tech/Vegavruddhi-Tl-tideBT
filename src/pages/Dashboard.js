@@ -1293,10 +1293,6 @@ export default function Dashboard() {
             <div style={{ fontSize: 14, fontWeight: 800, color: '#1b5e20' }}>₹{totalAvailable.toLocaleString()}</div>
             <div style={{ fontSize: 8, color: '#888', marginTop: 2 }}>My Fund + Carry</div>
           </div>
-          <div style={{ background: '#fff3e0', borderRadius: 12, padding: '12px 10px', textAlign: 'center', border: '1.5px solid #e6510030' }}>
-            <div style={{ fontSize: 8, fontWeight: 600, color: '#888', textTransform: 'uppercase', marginBottom: 2 }}>BT</div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: '#e65100' }}>₹{fundUsedBT.toLocaleString()}</div>
-          </div>
           <div style={{ background: '#ede9fe', borderRadius: 12, padding: '12px 10px', textAlign: 'center', border: '1.5px solid #7c3aed30' }}>
             <div style={{ fontSize: 8, fontWeight: 600, color: '#888', textTransform: 'uppercase', marginBottom: 2 }}>RP</div>
             <div style={{ fontSize: 14, fontWeight: 800, color: '#7c3aed' }}>₹{fundUsedRP.toLocaleString()}</div>
@@ -1624,6 +1620,7 @@ export default function Dashboard() {
                     <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#2e7d32', borderBottom: '2px solid #e8f3ed' }}>Recd</th>
                     <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#388e3c', borderBottom: '2px solid #e8f3ed' }}>Carry</th>
                     <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#1b5e20', borderBottom: '2px solid #e8f3ed' }}>Avail</th>
+                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#c62828', borderBottom: '2px solid #e8f3ed' }}>Deducted</th>
                     <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#e65100', borderBottom: '2px solid #e8f3ed' }}>BT</th>
                     <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#0369a1', borderBottom: '2px solid #e8f3ed' }}>RP#</th>
                     <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#7c3aed', borderBottom: '2px solid #e8f3ed' }}>RP</th>
@@ -1640,6 +1637,9 @@ export default function Dashboard() {
                       <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#2e7d32' }}>₹{fse.received?.toLocaleString()}</td>
                       <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#388e3c' }}>₹{(fse.carryForward || 0).toLocaleString()}</td>
                       <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#1b5e20' }}>₹{(fse.totalAvailable || fse.received || 0).toLocaleString()}</td>
+                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#c62828' }}>
+                        {(fse.deduction || 0) > 0 ? `−₹${(fse.deduction || 0).toLocaleString()}` : '₹0'}
+                      </td>
                       <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#e65100' }}>₹{fse.usedBT?.toLocaleString()}</td>
                       <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#0369a1' }}>{fse.rpCount || 0}</td>
                       <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>₹{fse.usedRP?.toLocaleString()}</td>
