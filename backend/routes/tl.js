@@ -1016,24 +1016,35 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     // Get BT_TL_CONNECT collection for selected month
     const btCollectionName = await findConnectCollection(db, selectedMonth, selectedYear);
 
-    // Get all merchants from bt_master per FSE
+    // Get all merchants from bt_master + TideBT Form Responses per FSE (same as FSE portal)
     const allMasterDocs = fseNames.length > 0 ? await db.collection('bt_master').find({
       $or: fseNames.map(n => ({
         fseName: { $regex: new RegExp(`^\\s*${escape(n)}\\s*\\d*\\s*$`, 'i') }
       }))
     }).toArray() : [];
 
-    // Group merchant numbers by FSE
+    const allFormDocs = fseNames.length > 0 ? await db.collection('TideBT Form Responses').find({
+      $or: fseNames.map(n => ({
+        employeeName: { $regex: new RegExp(`^\\s*${escape(n)}\\s*\\d*\\s*$`, 'i') }
+      })),
+      merchantNumber: { $exists: true, $ne: '' }
+    }, { projection: { merchantNumber: 1, employeeName: 1 } }).toArray() : [];
+
+    // Group merchant numbers by FSE — bt_master + form responses
     const fseMerchantNums = {};
     fseNames.forEach(n => { fseMerchantNums[n] = []; });
-    allMasterDocs.forEach(m => {
-      const num = (m.merchantNumber || '').trim();
+
+    const addNum = (num, empName) => {
       if (!num) return;
       const matchedFSE = fseNames.find(n =>
-        new RegExp(`^\\s*${escape(n)}\\s*\\d*\\s*$`, 'i').test(m.fseName || '')
+        new RegExp(`^\\s*${escape(n)}\\s*\\d*\\s*$`, 'i').test(empName || '')
       );
-      if (matchedFSE) fseMerchantNums[matchedFSE].push(num);
-    });
+      if (matchedFSE && !fseMerchantNums[matchedFSE].includes(num)) {
+        fseMerchantNums[matchedFSE].push(num);
+      }
+    };
+    allMasterDocs.forEach(m => addNum((m.merchantNumber || '').trim(), m.fseName));
+    allFormDocs.forEach(m => addNum((m.merchantNumber || '').trim(), m.employeeName));
 
     // Get BT data from BT_TL_CONNECT for all merchants
     const btLookup = {};
