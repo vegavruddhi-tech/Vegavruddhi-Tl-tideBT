@@ -1098,13 +1098,18 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
 
           // Payments received this month per FSE
           const mReceivedMap = {};
+          const mDeductionMap = {};
           allPayments.forEach(p => {
             if (!p.createdAt) return;
             const d = new Date(p.createdAt);
             if (d.getFullYear() !== curYear || MONTHS[d.getMonth()] !== monthName) return;
             const n = (p.transferTo || '').trim().toLowerCase();
             if (fseNames.some(f => f.toLowerCase() === n)) {
-              mReceivedMap[n] = (mReceivedMap[n] || 0) + (p.amount || 0);
+              if ((p.amount || 0) > 0) {
+                mReceivedMap[n] = (mReceivedMap[n] || 0) + (p.amount || 0);
+              } else if ((p.amount || 0) < 0) {
+                mDeductionMap[n] = (mDeductionMap[n] || 0) + Math.abs(p.amount || 0);
+              }
             }
           });
 
@@ -1129,15 +1134,14 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
           // A month where FSE spent more than received reduces the carry (can't go below 0).
           fseNames.forEach(fseName => {
             const fl = fseName.toLowerCase();
-            const recv = mReceivedMap[fl] || 0;
-            const bt   = mBTMap[fl]  || 0;
-            const rp   = mRPMap[fl]  || 0;
+            const recv      = mReceivedMap[fl]  || 0;
+            const deduction = mDeductionMap[fl] || 0;
+            const bt        = mBTMap[fl]  || 0;
+            const rp        = mRPMap[fl]  || 0;
             const rpCost = rp * 2500;
             const fee  = Math.round((bt > 10000 ? bt * 0.015 : 0) * 100) / 100;
-            const left = recv - (rpCost + fee);
-            // Only process if there was any activity (received or used)
+            const left = recv - deduction - (rpCost + fee);
             if (recv === 0 && left === 0) return;
-            // Running balance: clamp to 0 (carry can't go negative across months)
             fseCarryMap[fl] = Math.max(0, (fseCarryMap[fl] || 0) + left);
           });
         }
@@ -1149,10 +1153,15 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
       const fseNameLower = fseName.toLowerCase().trim();
       const merchantNums = fseMerchantNums[fseName] || [];
 
-      // Fund received — exact match on transferTo
+      // Fund received — positive payments only (exact match on transferTo)
       const received = payments
-        .filter(p => p.amount && (p.transferTo || '').toLowerCase().trim() === fseNameLower)
+        .filter(p => p.amount > 0 && (p.transferTo || '').toLowerCase().trim() === fseNameLower)
         .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+      // Fund deducted — absolute value of negative payments (minus fund recoveries)
+      const deduction = payments
+        .filter(p => p.amount < 0 && (p.transferTo || '').toLowerCase().trim() === fseNameLower)
+        .reduce((sum, p) => sum + Math.abs(p.amount || 0), 0);
 
       // BT/RP from BT_TL_CONNECT — aggregate across all merchants
       let usedBT = 0, rpCount = 0;
@@ -1174,8 +1183,8 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
 
       const carryFwd     = fseCarryMap[fseNameLower] || 0;
       const totalAvailable = received + carryFwd;
-      const fundLeft = totalAvailable - (usedRP + fee + withdrawFee);
-      return { fseName, received, carryForward: carryFwd, totalAvailable, usedBT, rpCount, usedRP, fee, withdrawAmount, withdrawFee, fundLeft };
+      const fundLeft = totalAvailable - deduction - (usedRP + fee + withdrawFee);
+      return { fseName, received, deduction, carryForward: carryFwd, totalAvailable, usedBT, rpCount, usedRP, fee, withdrawAmount, withdrawFee, fundLeft };
     });
 
     const result = { success: true, tracker };
@@ -2153,6 +2162,16 @@ router.get('/tidebt-carry-forward', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('TL carry forward error:', err.message);
     res.status(500).json({ message: err.message });
+  }
+});
+
+// POST /api/tl/cache/bust — clear all TL cache entries (call after sync)
+router.post('/cache/bust', async (req, res) => {
+  try {
+    await cacheInvalidatePattern('TL_*');
+    res.json({ success: true, message: 'All TL cache entries cleared' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
