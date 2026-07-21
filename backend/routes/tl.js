@@ -953,14 +953,17 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     // ── Resolve canonical tlName from TideBT_Access ───────────────────────
     let tlName = tlPortalName;
     try {
-      let ar = await db.collection('TideBT_Access').findOne({
-        tlName: { $regex: new RegExp(`^\\s*${escape(tlPortalName)}\\s*$`, 'i') }
-      });
-      if (!ar && tlEmail) {
+      // 1. Match by tlEmail (most reliable — never confuse with fseEmail)
+      let ar = tlEmail
+        ? await db.collection('TideBT_Access').findOne({ tlEmail: tlEmail.toLowerCase() })
+        : null;
+      // 2. Exact tlName match
+      if (!ar) {
         ar = await db.collection('TideBT_Access').findOne({
-          fseEmail: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') }
+          tlName: { $regex: new RegExp(`^\\s*${escape(tlPortalName)}\\s*$`, 'i') }
         });
       }
+      // 3. First-word tlName match (e.g. "Rohit Kumar" → "Rohit")
       if (!ar) {
         const fw = tlPortalName.split(' ')[0];
         ar = await db.collection('TideBT_Access').findOne({
