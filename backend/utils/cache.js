@@ -13,8 +13,16 @@ async function cacheGet(key) {
   try {
     const db = getDb(); if (!db) return null;
     const doc = await db.collection(CACHE_COLLECTION).findOne({ cacheKey: key });
-    if (doc) { console.log(`⚡ [Cache HIT] ${key}`); return doc.data; }
-    return null;
+    if (!doc) return null;
+    // Expire cache after 30 minutes so fresh BT data shows after sync
+    const AGE_MS = 30 * 60 * 1000;
+    if (doc.updatedAt && (Date.now() - new Date(doc.updatedAt).getTime()) > AGE_MS) {
+      console.log(`⏰ [Cache EXPIRED] ${key}`);
+      await db.collection(CACHE_COLLECTION).deleteOne({ cacheKey: key });
+      return null;
+    }
+    console.log(`⚡ [Cache HIT] ${key}`);
+    return doc.data;
   } catch { return null; }
 }
 
