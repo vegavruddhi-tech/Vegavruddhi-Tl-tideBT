@@ -283,13 +283,29 @@ export default function Dashboard() {
   const totalAvailable    = myFund + (serverCarryForward !== null ? serverCarryForward : carryForward);
   const fundLeftWithCarry = totalAvailable - totalUsed;
 
-  // ── Stale-while-revalidate fetch helper ───────────────────────────────────
-  const cachedFetch = useCallback((url, setter, transform, ck) => {
+  // ── 5-Minute Auto-Expiring Cache Fetch Helper ────────────────────────────
+  const cachedFetch = useCallback((url, setter, transform, ck, maxAgeMs = 300000) => {
     const stored = localStorage.getItem(ck);
-    if (stored) { try { setter(transform(JSON.parse(stored))); } catch {} }
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === 'object' && parsed._cachedAt) {
+          if (Date.now() - parsed._cachedAt < maxAgeMs) {
+            setter(transform(parsed.data));
+          } else {
+            localStorage.removeItem(ck); // Auto-expire cache after 5 minutes!
+          }
+        } else {
+          setter(transform(parsed));
+        }
+      } catch {}
+    }
     fetch(url, { headers: { Authorization: 'Bearer ' + token } })
       .then(r => r.json())
-      .then(data => { localStorage.setItem(ck, JSON.stringify(data)); setter(transform(data)); })
+      .then(data => {
+        try { localStorage.setItem(ck, JSON.stringify({ _cachedAt: Date.now(), data })); } catch {}
+        setter(transform(data));
+      })
       .catch(() => {});
   }, [token]);
 
@@ -496,22 +512,15 @@ export default function Dashboard() {
   // Fetch team fund tracker — use bt-sync-version to auto-invalidate cache after BT sync
   useEffect(() => {
     if (!token || !tl) return;
-    // First get the sync version, then fetch fund tracker with version in cache key
-    fetch(`${PROFILE_API_BASE}/api/tl/bt-sync-version`)
+    const queryParams = new URLSearchParams({ dateFilter, fromDate, toDate, selectedYear, selectedMonth }).toString();
+    fetch(`${PROFILE_API_BASE}/api/tl/tidebt-team-fund-tracker?${queryParams}`, {
+      headers: { Authorization: 'Bearer ' + token },
+      cache: 'no-store'
+    })
       .then(r => r.json())
-      .then(({ version }) => {
-        const v = version ? String(version).slice(-6) : '0'; // last 6 digits of timestamp
-        const queryParams = new URLSearchParams({ dateFilter, fromDate, toDate, selectedYear, selectedMonth }).toString();
-        cachedFetch(`${PROFILE_API_BASE}/api/tl/tidebt-team-fund-tracker?${queryParams}`,
-          setTeamFundTracker, d => d.tracker || [], `tl_fundtracker_${selectedMonth}_${selectedYear}_${dateFilter}_v${v}`);
-      })
-      .catch(() => {
-        // Fallback if version fetch fails
-        const queryParams = new URLSearchParams({ dateFilter, fromDate, toDate, selectedYear, selectedMonth }).toString();
-        cachedFetch(`${PROFILE_API_BASE}/api/tl/tidebt-team-fund-tracker?${queryParams}`,
-          setTeamFundTracker, d => d.tracker || [], `tl_fundtracker_${selectedMonth}_${selectedYear}_${dateFilter}`);
-      });
-  }, [token, tl, dateFilter, fromDate, toDate, selectedYear, selectedMonth, cachedFetch]);
+      .then(d => setTeamFundTracker(d.tracker || []))
+      .catch(() => {});
+  }, [token, tl, dateFilter, fromDate, toDate, selectedYear, selectedMonth]);
 
   const handleAddExpense = async () => {
     if (!expenseAmount || !expensePurpose) return;

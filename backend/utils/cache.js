@@ -4,8 +4,7 @@
  */
 
 const mongoose = require('mongoose');
-const CACHE_COLLECTION = 'TideBT_SummaryCache';
-const AGE_MS = 30 * 60 * 1000;
+const AGE_MS = 5 * 60 * 1000; // 5 Minutes TTL auto-expiration
 
 // ── In-memory cache ────────────────────────────────────────────────────────
 const memCache = new Map();
