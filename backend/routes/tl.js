@@ -420,6 +420,16 @@ router.post('/bt-payment', verifyToken, async (req, res) => {
     }
     // ─────────────────────────────────────────────────────────────────────
 
+    // ── Check duplicate payment (same transferTo, amount within 60s) ──
+    const recentDup = await TideBTPayments.findOne({
+      transferTo,
+      amount: Number(amount),
+      createdAt: { $gte: new Date(Date.now() - 60000) }
+    });
+    if (recentDup) {
+      return res.status(400).json({ message: 'Duplicate payment submission detected within 60 seconds. Duplicate blocked.' });
+    }
+
     const payment = {
       transferToWhom,
       senderName: canonicalName, // use fund-sheet canonical name, not portal name
@@ -979,7 +989,7 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
     const { dateFilter, selectedYear, selectedMonth } = req.query;
-    const ck = cacheKey('TL_FUND_TRACKER_V9', tl._id.toString(), selectedMonth, selectedYear, dateFilter);
+    const ck = cacheKey('TL_FUND_TRACKER_V10', tl._id.toString(), selectedMonth, selectedYear, dateFilter);
     const cached = await cacheGet(ck);
     if (cached) return res.json(cached);
 
@@ -1327,18 +1337,29 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
       const totalAvailable = received + carryFwd;
       const fundLeft = totalAvailable - deduction - (usedRP + fee + withdrawFee);
 
-      // Individual payment transactions list for this FSE
-      const fsePaymentsList = payments
-        .filter(p => matchesFSE(p))
+      // Individual payment transactions list for this FSE — deduplicated by amount + date
+      const rawFsePayments = payments.filter(p => matchesFSE(p));
+      const seenFseTxns = new Set();
+      const fsePaymentsList = [];
+
+      rawFsePayments
         .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-        .map(p => ({
-          _id: p._id ? p._id.toString() : null,
-          amount: p.amount || 0,
-          senderName: (p.senderName || p.tlName || p.tl || 'Admin').trim(),
-          transferTo: (p.transferTo || fseName).trim(),
-          paymentDoneOn: p.paymentDoneOn || 'QR / Bank Transfer',
-          createdAt: p.createdAt || null
-        }));
+        .forEach(p => {
+          const amt = Math.abs(p.amount || 0);
+          const dateStr = p.paymentDoneOn || (p.createdAt ? new Date(p.createdAt).toISOString().split('T')[0] : '');
+          const txnKey = `${amt}_${dateStr}`;
+          if (!seenFseTxns.has(txnKey)) {
+            seenFseTxns.add(txnKey);
+            fsePaymentsList.push({
+              _id: p._id ? p._id.toString() : null,
+              amount: p.amount || 0,
+              senderName: (p.senderName || p.tlName || p.tl || 'Admin').trim(),
+              transferTo: (p.transferTo || fseName).trim(),
+              paymentDoneOn: p.paymentDoneOn || 'QR / Bank Transfer',
+              createdAt: p.createdAt || null
+            });
+          }
+        });
 
       return { fseName, received, deduction, carryForward: carryFwd, totalAvailable, usedBT, rpCount, usedRP, fee, withdrawAmount, withdrawFee, fundLeft, payments: fsePaymentsList };
     });
