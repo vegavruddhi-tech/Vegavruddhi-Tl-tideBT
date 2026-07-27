@@ -979,7 +979,7 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
     const { dateFilter, selectedYear, selectedMonth } = req.query;
-    const ck = cacheKey('TL_FUND_TRACKER_V5', tl._id.toString(), selectedMonth, selectedYear, dateFilter);
+    const ck = cacheKey('TL_FUND_TRACKER_V6', tl._id.toString(), selectedMonth, selectedYear, dateFilter);
     const cached = await cacheGet(ck);
     if (cached) return res.json(cached);
 
@@ -1239,8 +1239,21 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
         const tTo   = (p.transferTo || '').toLowerCase().trim();
         const fName = (p.fseName    || '').toLowerCase().trim();
         const fEm   = (p.fseEmail   || '').toLowerCase().trim();
+        const pWhom = (p.transferToWhom || '').trim();
+        const pSender = (p.senderName || p.tlName || p.tl || '').toLowerCase().trim();
+
+        // Exclude TL-role payments or payments under another TL (Dheeraj)
+        if (pWhom === "TL's & Managers") return false;
+        if (pSender.includes('dheeraj')) return false;
+
         if (fseEmail && fEm === fseEmail) return true;
         if (tTo === fseNameLower || fName === fseNameLower) return true;
+
+        // Broad matching for Rohit Kr / Rohit / Rohit Kumar under TL Ravi Kumar
+        if (fseNameLower.startsWith('rohit')) {
+          if (tTo.includes('rohit') || fName.includes('rohit')) return true;
+        }
+
         return false;
       };
 
