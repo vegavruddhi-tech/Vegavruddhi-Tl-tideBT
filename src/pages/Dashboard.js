@@ -492,12 +492,24 @@ export default function Dashboard() {
       .catch(() => {});
   }, [token, tl, selectedMonth, selectedYear]);
 
-  // Fetch team fund tracker
+  // Fetch team fund tracker — use bt-sync-version to auto-invalidate cache after BT sync
   useEffect(() => {
     if (!token || !tl) return;
-    const queryParams = new URLSearchParams({ dateFilter, fromDate, toDate, selectedYear, selectedMonth }).toString();
-    cachedFetch(`${PROFILE_API_BASE}/api/tl/tidebt-team-fund-tracker?${queryParams}`,
-      setTeamFundTracker, d => d.tracker || [], `tl_fundtracker_${selectedMonth}_${selectedYear}_${dateFilter}`);
+    // First get the sync version, then fetch fund tracker with version in cache key
+    fetch(`${PROFILE_API_BASE}/api/tl/bt-sync-version`)
+      .then(r => r.json())
+      .then(({ version }) => {
+        const v = version ? String(version).slice(-6) : '0'; // last 6 digits of timestamp
+        const queryParams = new URLSearchParams({ dateFilter, fromDate, toDate, selectedYear, selectedMonth }).toString();
+        cachedFetch(`${PROFILE_API_BASE}/api/tl/tidebt-team-fund-tracker?${queryParams}`,
+          setTeamFundTracker, d => d.tracker || [], `tl_fundtracker_${selectedMonth}_${selectedYear}_${dateFilter}_v${v}`);
+      })
+      .catch(() => {
+        // Fallback if version fetch fails
+        const queryParams = new URLSearchParams({ dateFilter, fromDate, toDate, selectedYear, selectedMonth }).toString();
+        cachedFetch(`${PROFILE_API_BASE}/api/tl/tidebt-team-fund-tracker?${queryParams}`,
+          setTeamFundTracker, d => d.tracker || [], `tl_fundtracker_${selectedMonth}_${selectedYear}_${dateFilter}`);
+      });
   }, [token, tl, dateFilter, fromDate, toDate, selectedYear, selectedMonth, cachedFetch]);
 
   const handleAddExpense = async () => {
