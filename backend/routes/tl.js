@@ -1055,20 +1055,25 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     const btCollectionName = await findConnectCollection(db, selectedMonth, selectedYear);
 
     // Get all merchants from bt_master + TideBT Form Responses per FSE (strictly requiring tl = current TL)
-    const allMasterDocs = records.length > 0 ? await db.collection('bt_master').find({
-      $or: records.map(r => ({
-        $or: [
-          ...(r.fseEmail ? [{
-            fseEmail: { $regex: new RegExp(`^${escape(r.fseEmail)}$`, 'i') },
-            tl:       { $regex: new RegExp(`^\\s*(${escape(tlName)}|${escape(tlPortalName)})\\s*\\d*\\s*$`, 'i') }
-          }] : []),
-          {
-            fseName: { $regex: new RegExp(`^\\s*${escape(r.fseName)}\\s*\\d*\\s*$`, 'i') },
-            tl:      { $regex: new RegExp(`^\\s*(${escape(tlName)}|${escape(tlPortalName)})\\s*\\d*\\s*$`, 'i') }
-          }
-        ]
-      }))
-    }).toArray() : [];
+    const masterQueryConditions = [];
+    records.forEach(r => {
+      if (r.fseEmail) {
+        masterQueryConditions.push({
+          fseEmail: { $regex: new RegExp(`^${escape(r.fseEmail)}$`, 'i') },
+          tl:       { $regex: new RegExp(`^\\s*(${escape(tlName)}|${escape(tlPortalName)})\\s*\\d*\\s*$`, 'i') }
+        });
+      }
+      if (r.fseName) {
+        masterQueryConditions.push({
+          fseName: { $regex: new RegExp(`^\\s*${escape(r.fseName)}\\s*\\d*\\s*$`, 'i') },
+          tl:      { $regex: new RegExp(`^\\s*(${escape(tlName)}|${escape(tlPortalName)})\\s*\\d*\\s*$`, 'i') }
+        });
+      }
+    });
+
+    const allMasterDocs = masterQueryConditions.length > 0
+      ? await db.collection('bt_master').find({ $or: masterQueryConditions }).toArray()
+      : [];
 
     const allFormDocs = fseNames.length > 0 ? await db.collection('TideBT Form Responses').find({
       $or: fseNames.map(n => ({
@@ -1626,25 +1631,26 @@ router.get('/tidebt-bt-performance', verifyToken, async (req, res) => {
     }
     const fseNames = [...new Set(accessRecords.map(r => r.fseName).filter(Boolean))];
 
-    // Get all merchant numbers for FSEs under this TL
-    // PRIMARY: bt_master — has all assigned merchants even without forms
-    // FALLBACK: TideBT_Merchants + form responses
+    const masterQueryConditions = [];
+    accessRecords.forEach(r => {
+      if (r.fseEmail) {
+        masterQueryConditions.push({
+          fseEmail: { $regex: new RegExp(`^${escape(r.fseEmail)}$`, 'i') },
+          tl:       { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*\\d*\\s*$`, 'i') }
+        });
+      }
+      if (r.fseName) {
+        masterQueryConditions.push({
+          fseName: { $regex: new RegExp(`^\\s*${escape(r.fseName)}\\s*\\d*\\s*$`, 'i') },
+          tl:      { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*\\d*\\s*$`, 'i') }
+        });
+      }
+    });
+
     const [btMasterDocs, merchantDocs, formMerchantDocs, appFormMerchantDocs] = await Promise.all([
-      // bt_master — primary (all merchants assigned to FSEs under this TL, filtered by fseEmail & tl)
-      accessRecords.length > 0 ? db.collection('bt_master').find({
-        $or: accessRecords.map(r => ({
-          $or: [
-            ...(r.fseEmail ? [{
-              fseEmail: { $regex: new RegExp(`^${escape(r.fseEmail)}$`, 'i') },
-              tl:       { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*\\d*\\s*$`, 'i') }
-            }] : []),
-            {
-              fseName: { $regex: new RegExp(`^\\s*${escape(r.fseName)}\\s*\\d*\\s*$`, 'i') },
-              tl:      { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*\\d*\\s*$`, 'i') }
-            }
-          ]
-        }))
-      }).project({ merchantNumber: 1 }).toArray() : Promise.resolve([]),
+      masterQueryConditions.length > 0
+        ? db.collection('bt_master').find({ $or: masterQueryConditions }).project({ merchantNumber: 1 }).toArray()
+        : Promise.resolve([]),
 
       db.collection('TideBT_Merchants').find({
         $or: fseNames.map(n => ({
