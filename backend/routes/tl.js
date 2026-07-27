@@ -979,7 +979,7 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
     const { dateFilter, selectedYear, selectedMonth } = req.query;
-    const ck = cacheKey('TL_FUND_TRACKER_V3', tl._id.toString(), selectedMonth, selectedYear, dateFilter);
+    const ck = cacheKey('TL_FUND_TRACKER_V4', tl._id.toString(), selectedMonth, selectedYear, dateFilter);
     const cached = await cacheGet(ck);
     if (cached) return res.json(cached);
 
@@ -1225,16 +1225,29 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     // Build tracker per FSE using BT_TL_CONNECT for BT/RP
     const tracker = fseNames.map(fseName => {
       const fseNameLower = fseName.toLowerCase().trim();
+      const firstWord    = fseNameLower.split(' ')[0];
       const merchantNums = fseMerchantNums[fseName] || [];
+      const accessRec    = records.find(r => (r.fseName || '').toLowerCase().trim() === fseNameLower);
+      const fseEmail     = (accessRec?.fseEmail || '').toLowerCase().trim();
 
-      // Fund received — positive payments only (exact match on transferTo)
+      const matchesFSE = p => {
+        const tTo   = (p.transferTo || '').toLowerCase().trim();
+        const fName = (p.fseName    || '').toLowerCase().trim();
+        const fEm   = (p.fseEmail   || '').toLowerCase().trim();
+        if (tTo === fseNameLower || fName === fseNameLower) return true;
+        if (fseEmail && fEm === fseEmail) return true;
+        if (firstWord && firstWord.length >= 3 && (tTo.startsWith(firstWord) || fName.startsWith(firstWord))) return true;
+        return false;
+      };
+
+      // Fund received — positive payments matching transferTo, fseName, or fseEmail
       const received = payments
-        .filter(p => p.amount > 0 && (p.transferTo || '').toLowerCase().trim() === fseNameLower)
+        .filter(p => p.amount > 0 && matchesFSE(p))
         .reduce((sum, p) => sum + (p.amount || 0), 0);
 
-      // Fund deducted — absolute value of negative payments (minus fund recoveries)
+      // Fund deducted — absolute value of negative payments
       const deduction = payments
-        .filter(p => p.amount < 0 && (p.transferTo || '').toLowerCase().trim() === fseNameLower)
+        .filter(p => p.amount < 0 && matchesFSE(p))
         .reduce((sum, p) => sum + Math.abs(p.amount || 0), 0);
 
       // BT/RP from BT_TL_CONNECT — aggregate across all merchants
