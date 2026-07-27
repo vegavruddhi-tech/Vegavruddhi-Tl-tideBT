@@ -1149,6 +1149,10 @@ export default function Dashboard() {
                 Reset
               </button>
             )}
+            <button onClick={() => { localStorage.clear(); sessionStorage.clear(); window.location.reload(true); }}
+              style={{ padding: '5px 12px', border: '1px solid #27ae60', borderRadius: 8, background: '#e8f8f5', color: '#27ae60', fontWeight: 800, fontSize: 11, cursor: 'pointer', marginLeft: 'auto' }}>
+              🧹 Clear Cache
+            </button>
           </div>
         </div>
 
