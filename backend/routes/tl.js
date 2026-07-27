@@ -1155,7 +1155,13 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
         if (!nameLower || (b.openingBalance || 0) <= 0) return;
         // Only apply FSE-type opening balances for FSE fund tracker
         if ((b.type || '').toUpperCase() === 'FSE') {
-          fseCarryMap[nameLower] = Math.round(b.openingBalance);
+          const val = Math.round(b.openingBalance);
+          fseCarryMap[nameLower] = val;
+          if (nameLower.includes('rohit')) {
+            fseCarryMap['rohit kr'] = val;
+            fseCarryMap['rohit kumar'] = val;
+            fseCarryMap['rohit'] = val;
+          }
         }
       });
       console.log(`[TL Fund Tracker] Loaded ${Object.keys(fseCarryMap).length} FSE opening balances for July 2026`);
@@ -1288,7 +1294,21 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
       const carryFwd     = fseCarryMap[fseNameLower] || 0;
       const totalAvailable = received + carryFwd;
       const fundLeft = totalAvailable - deduction - (usedRP + fee + withdrawFee);
-      return { fseName, received, deduction, carryForward: carryFwd, totalAvailable, usedBT, rpCount, usedRP, fee, withdrawAmount, withdrawFee, fundLeft };
+
+      // Individual payment transactions list for this FSE
+      const fsePaymentsList = payments
+        .filter(p => matchesFSE(p))
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+        .map(p => ({
+          _id: p._id ? p._id.toString() : null,
+          amount: p.amount || 0,
+          senderName: (p.senderName || p.tlName || p.tl || 'Admin').trim(),
+          transferTo: (p.transferTo || fseName).trim(),
+          paymentDoneOn: p.paymentDoneOn || 'QR / Bank Transfer',
+          createdAt: p.createdAt || null
+        }));
+
+      return { fseName, received, deduction, carryForward: carryFwd, totalAvailable, usedBT, rpCount, usedRP, fee, withdrawAmount, withdrawFee, fundLeft, payments: fsePaymentsList };
     });
 
     const result = { success: true, tracker };

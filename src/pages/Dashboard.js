@@ -67,6 +67,7 @@ export default function Dashboard() {
   const [teamFundTracker, setTeamFundTracker] = useState([]);
   const [showFundTracker, setShowFundTracker] = useState(true);
   const [showSentDetails, setShowSentDetails] = useState(false);
+  const [expandedFseTxns, setExpandedFseTxns] = useState(null);
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expensePurpose, setExpensePurpose] = useState('');
   const [expenseLoading, setExpenseLoading] = useState(false);
@@ -997,25 +998,88 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {teamFundTracker.map((fse, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #f0f0f0', background: i % 2 === 0 ? '#fff' : '#fafcfa' }}>
-                      <td style={{ padding: '8px 10px', fontWeight: 700, color: '#1a4731', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fse.fseName}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#2e7d32' }}>₹{fse.received?.toLocaleString()}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#388e3c' }}>₹{(fse.carryForward || 0).toLocaleString()}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#1b5e20' }}>₹{(fse.totalAvailable || fse.received || 0).toLocaleString()}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#c62828' }}>
-                        {(fse.deduction || 0) > 0 ? `−₹${(fse.deduction || 0).toLocaleString()}` : '₹0'}
-                      </td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#e65100' }}>₹{fse.usedBT?.toLocaleString()}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#0369a1' }}>{fse.rpCount || 0}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>₹{fse.usedRP?.toLocaleString()}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#c62828' }}>₹{fse.fee?.toLocaleString()}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#4338ca' }}>₹{fse.withdrawAmount?.toLocaleString() || 0}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#880e4f' }}>₹{fse.withdrawFee?.toLocaleString() || 0}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 800, color: fse.fundLeft >= 0 ? '#1565c0' : '#c62828' }}>
-                        ₹{fse.fundLeft?.toLocaleString()}
-                        {fse.fundLeft < 0 && <div style={{ fontSize: 7, color: '#c62828', fontWeight: 400 }}>BT done, fund pending</div>}
-                      </td>
-                    </tr>
+                    <React.Fragment key={i}>
+                      <tr style={{ borderBottom: '1px solid #f0f0f0', background: i % 2 === 0 ? '#fff' : '#fafcfa' }}>
+                        <td style={{ padding: '8px 10px', fontWeight: 700, color: '#1a4731', maxWidth: 100 }}>
+                          <div>{fse.fseName}</div>
+                          {fse.payments && fse.payments.length > 0 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedFseTxns(expandedFseTxns === fse.fseName ? null : fse.fseName);
+                              }}
+                              style={{
+                                border: 'none', background: expandedFseTxns === fse.fseName ? '#1a4731' : '#e8f5e9',
+                                color: expandedFseTxns === fse.fseName ? '#fff' : '#1b5e20',
+                                fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                cursor: 'pointer', marginTop: 3, display: 'inline-flex', alignItems: 'center', gap: 3
+                              }}>
+                              💳 {fse.payments.length} txns {expandedFseTxns === fse.fseName ? '▲' : '▼'}
+                            </button>
+                          )}
+                        </td>
+                        <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#2e7d32' }}>₹{fse.received?.toLocaleString()}</td>
+                        <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#388e3c' }}>₹{(fse.carryForward || 0).toLocaleString()}</td>
+                        <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#1b5e20' }}>₹{(fse.totalAvailable || fse.received || 0).toLocaleString()}</td>
+                        <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#c62828' }}>
+                          {(fse.deduction || 0) > 0 ? `−₹${(fse.deduction || 0).toLocaleString()}` : '₹0'}
+                        </td>
+                        <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#e65100' }}>₹{fse.usedBT?.toLocaleString()}</td>
+                        <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#0369a1' }}>{fse.rpCount || 0}</td>
+                        <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>₹{fse.usedRP?.toLocaleString()}</td>
+                        <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#c62828' }}>₹{fse.fee?.toLocaleString()}</td>
+                        <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#4338ca' }}>₹{fse.withdrawAmount?.toLocaleString() || 0}</td>
+                        <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#880e4f' }}>₹{fse.withdrawFee?.toLocaleString() || 0}</td>
+                        <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 800, color: fse.fundLeft >= 0 ? '#1565c0' : '#c62828' }}>
+                          ₹{fse.fundLeft?.toLocaleString()}
+                          {fse.fundLeft < 0 && <div style={{ fontSize: 7, color: '#c62828', fontWeight: 400 }}>BT done, fund pending</div>}
+                        </td>
+                      </tr>
+                      {expandedFseTxns === fse.fseName && (
+                        <tr style={{ background: '#f4fbf7', borderBottom: '2px solid #a5d6a7' }}>
+                          <td colSpan={12} style={{ padding: '12px 14px' }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: '#1a4731', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>💳 Fund Transaction Details for FSE <strong>"{fse.fseName}"</strong> ({fse.payments?.length || 0} transactions)</span>
+                              <button onClick={() => setExpandedFseTxns(null)} style={{ border: 'none', background: '#e0e0e0', padding: '2px 8px', borderRadius: 4, cursor: 'pointer', fontSize: 11, color: '#333', fontWeight: 600 }}>✕ Close</button>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {fse.payments && fse.payments.length > 0 ? (
+                                fse.payments.map((p, pIdx) => {
+                                  const isDeduction = p.amount < 0;
+                                  return (
+                                    <div key={pIdx} style={{
+                                      background: isDeduction ? '#fff5f5' : '#fff',
+                                      border: `1px solid ${isDeduction ? '#ffcdd2' : '#c8e6c9'}`,
+                                      borderRadius: 8, padding: '8px 12px',
+                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                    }}>
+                                      <div>
+                                        <div style={{ fontSize: 11, fontWeight: 700, color: isDeduction ? '#c62828' : '#2e7d32' }}>
+                                          {isDeduction ? '↩ Fund Returned / Deducted' : '⬇ Received Credit'}
+                                        </div>
+                                        <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>
+                                          Sender: <strong>{p.senderName}</strong> → {p.transferTo} · {p.paymentDoneOn} · {p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '–'}
+                                        </div>
+                                      </div>
+                                      <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: 13, fontWeight: 800, color: isDeduction ? '#c62828' : '#2e7d32' }}>
+                                          {isDeduction ? '-' : '+'}₹{Math.abs(p.amount).toLocaleString()}
+                                        </div>
+                                        <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: isDeduction ? '#fdecea' : '#e6f4ea', color: isDeduction ? '#c62828' : '#2e7d32' }}>
+                                          {isDeduction ? 'Return' : 'Credit'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <div style={{ fontSize: 10, color: '#888' }}>No payment transaction details recorded for this FSE.</div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
