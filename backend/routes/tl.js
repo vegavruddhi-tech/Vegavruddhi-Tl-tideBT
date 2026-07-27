@@ -979,7 +979,7 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
     const { dateFilter, selectedYear, selectedMonth } = req.query;
-    const ck = cacheKey('TL_FUND_TRACKER_V8', tl._id.toString(), selectedMonth, selectedYear, dateFilter);
+    const ck = cacheKey('TL_FUND_TRACKER_V9', tl._id.toString(), selectedMonth, selectedYear, dateFilter);
     const cached = await cacheGet(ck);
     if (cached) return res.json(cached);
 
@@ -1183,6 +1183,12 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
             fseCarryMap['rohit kumar'] = val;
             fseCarryMap['rohit'] = val;
           }
+          if (nameLower.includes('faisal')) {
+            fseCarryMap['faisal'] = val;
+            fseCarryMap['md faisal'] = val;
+            fseCarryMap['mohd faisal'] = val;
+            fseCarryMap['faisal khan'] = val;
+          }
         }
       });
       console.log(`[TL Fund Tracker] Loaded ${Object.keys(fseCarryMap).length} FSE opening balances for July 2026`);
@@ -1279,6 +1285,11 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
         // Broad matching for Rohit Kr / Rohit / Rohit Kumar under TL Ravi Kumar
         if (fseNameLower.startsWith('rohit')) {
           if (tTo.includes('rohit') || fName.includes('rohit')) return true;
+        }
+
+        // Broad matching for Faisal / Md Faisal / Mohd Faisal / Faisal Khan
+        if (fseNameLower.includes('faisal')) {
+          if (tTo.includes('faisal') || fName.includes('faisal')) return true;
         }
 
         return false;
