@@ -979,7 +979,7 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
     const { dateFilter, selectedYear, selectedMonth } = req.query;
-    const ck = cacheKey('TL_FUND_TRACKER_V7', tl._id.toString(), selectedMonth, selectedYear, dateFilter);
+    const ck = cacheKey('TL_FUND_TRACKER_V8', tl._id.toString(), selectedMonth, selectedYear, dateFilter);
     const cached = await cacheGet(ck);
     if (cached) return res.json(cached);
 
@@ -1082,21 +1082,42 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
       merchantNumber: { $exists: true, $ne: '' }
     }, { projection: { merchantNumber: 1, employeeName: 1 } }).toArray() : [];
 
+    // Map fseName -> fseEmail from access records
+    const fseEmailMap = {};
+    records.forEach(r => {
+      if (r.fseName) fseEmailMap[r.fseName.trim().toLowerCase()] = (r.fseEmail || '').trim().toLowerCase();
+    });
+
     // Group merchant numbers by FSE — bt_master + form responses
     const fseMerchantNums = {};
     fseNames.forEach(n => { fseMerchantNums[n] = []; });
 
-    const addNum = (num, empName) => {
-      if (!num) return;
-      const matchedFSE = fseNames.find(n =>
-        new RegExp(`^\\s*${escape(n)}\\s*\\d*\\s*$`, 'i').test(empName || '')
-      );
-      if (matchedFSE && !fseMerchantNums[matchedFSE].includes(num)) {
-        fseMerchantNums[matchedFSE].push(num);
+    const addNumDoc = (num, mFseName, mFseEmail) => {
+      const cleanNum = (num || '').trim();
+      if (!cleanNum) return;
+
+      const mNameLower  = (mFseName  || '').trim().toLowerCase();
+      const mEmailLower = (mFseEmail || '').trim().toLowerCase();
+
+      const matchedFSE = fseNames.find(n => {
+        const nLower = n.trim().toLowerCase();
+        const fEmail = fseEmailMap[nLower];
+
+        // 1. Exact or email match
+        if (fEmail && mEmailLower && fEmail === mEmailLower) return true;
+
+        // 2. Name regex or prefix match
+        if (mNameLower && (mNameLower === nLower || mNameLower.startsWith(nLower) || nLower.startsWith(mNameLower))) return true;
+
+        return false;
+      });
+
+      if (matchedFSE && !fseMerchantNums[matchedFSE].includes(cleanNum)) {
+        fseMerchantNums[matchedFSE].push(cleanNum);
       }
     };
-    allMasterDocs.forEach(m => addNum((m.merchantNumber || '').trim(), m.fseName));
-    allFormDocs.forEach(m => addNum((m.merchantNumber || '').trim(), m.employeeName));
+    allMasterDocs.forEach(m => addNumDoc(m.merchantNumber, m.fseName, m.fseEmail));
+    allFormDocs.forEach(m => addNumDoc(m.merchantNumber, m.employeeName, null));
 
     // Get BT data from BT_TL_CONNECT for all merchants
     const btLookup = {};
