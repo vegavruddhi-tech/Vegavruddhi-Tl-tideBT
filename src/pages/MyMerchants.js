@@ -263,6 +263,15 @@ export default function MyMerchants() {
                           {m.stage3>0 && <span style={{ fontSize: 9, background: '#fff3e0', color: '#e65100', padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>BT ({btMonth}): ₹{m.stage3.toLocaleString()}</span>}
                           {m.stage3Gap>0 && <span style={{ fontSize: 9, background: '#fdecea', color: '#c62828', padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>Left ₹{m.stage3Gap.toLocaleString()}</span>}
                           {m.upiAmount>0 && <span style={{ fontSize: 9, background: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>UPI ₹{m.upiAmount.toLocaleString()} ({m.upiTxnCount} txn)</span>}
+                          {(() => {
+                            const bt  = parseFloat(String(m.stage3    || '0').replace(/,/g,'')) || 0;
+                            const upi = parseFloat(String(m.upiAmount || '0').replace(/,/g,'')) || 0;
+                            if (!bt || !upi) return null;
+                            const pct   = Math.round((upi / bt) * 100);
+                            const color = pct >= 80 ? '#15803d' : pct >= 50 ? '#0369a1' : '#c2410c';
+                            const bg    = pct >= 80 ? '#d8f3dc' : pct >= 50 ? '#e0f2fe' : '#ffedd5';
+                            return <span style={{ fontSize: 9, background: bg, color, padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>UPI {pct}% of BT</span>;
+                          })()}
                           {(m.rewardPassPro||'').toLowerCase()==='active' && <span style={{ fontSize: 9, background: '#ede9fe', color: '#7c3aed', padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>RP Active</span>}
                           {(m.passLive||'').toLowerCase()==='live' && <span style={{ fontSize: 9, background: '#d8f3dc', color: '#1a4731', padding: '1px 6px', borderRadius: 6, fontWeight: 700 }}>Pass Live ✓</span>}
                         </div>

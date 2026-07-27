@@ -963,7 +963,7 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
     const { dateFilter, selectedYear, selectedMonth } = req.query;
-    const ck = cacheKey('TL_FUND_TRACKER', tl._id.toString(), selectedMonth, selectedYear, dateFilter);
+    const ck = cacheKey('TL_FUND_TRACKER_V2', tl._id.toString(), selectedMonth, selectedYear, dateFilter);
     const cached = await cacheGet(ck);
     if (cached) return res.json(cached);
 
@@ -1038,10 +1038,16 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
     // Get BT_TL_CONNECT collection for selected month
     const btCollectionName = await findConnectCollection(db, selectedMonth, selectedYear);
 
-    // Get all merchants from bt_master + TideBT Form Responses per FSE (same as FSE portal)
-    const allMasterDocs = fseNames.length > 0 ? await db.collection('bt_master').find({
-      $or: fseNames.map(n => ({
-        fseName: { $regex: new RegExp(`^\\s*${escape(n)}\\s*\\d*\\s*$`, 'i') }
+    // Get all merchants from bt_master + TideBT Form Responses per FSE (filtered by fseEmail/TL name)
+    const allMasterDocs = records.length > 0 ? await db.collection('bt_master').find({
+      $or: records.map(r => ({
+        $or: [
+          ...(r.fseEmail ? [{ fseEmail: { $regex: new RegExp(`^${escape(r.fseEmail)}$`, 'i') } }] : []),
+          {
+            fseName: { $regex: new RegExp(`^\\s*${escape(r.fseName)}\\s*\\d*\\s*$`, 'i') },
+            tl:      { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*\\d*\\s*$`, 'i') }
+          }
+        ]
       }))
     }).toArray() : [];
 
@@ -1592,10 +1598,16 @@ router.get('/tidebt-bt-performance', verifyToken, async (req, res) => {
     // PRIMARY: bt_master — has all assigned merchants even without forms
     // FALLBACK: TideBT_Merchants + form responses
     const [btMasterDocs, merchantDocs, formMerchantDocs, appFormMerchantDocs] = await Promise.all([
-      // bt_master — primary (all merchants assigned to FSEs under this TL)
-      fseNames.length > 0 ? db.collection('bt_master').find({
-        $or: fseNames.map(n => ({
-          fseName: { $regex: new RegExp(`^\\s*${escape(n)}\\s*\\d*\\s*$`, 'i') }
+      // bt_master — primary (all merchants assigned to FSEs under this TL, filtered by fseEmail/TL)
+      records.length > 0 ? db.collection('bt_master').find({
+        $or: records.map(r => ({
+          $or: [
+            ...(r.fseEmail ? [{ fseEmail: { $regex: new RegExp(`^${escape(r.fseEmail)}$`, 'i') } }] : []),
+            {
+              fseName: { $regex: new RegExp(`^\\s*${escape(r.fseName)}\\s*\\d*\\s*$`, 'i') },
+              tl:      { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*\\d*\\s*$`, 'i') }
+            }
+          ]
         }))
       }).project({ merchantNumber: 1 }).toArray() : Promise.resolve([]),
 

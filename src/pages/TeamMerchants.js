@@ -359,6 +359,22 @@ export default function TeamMerchants() {
                                     <span style={{ fontSize: 9, background: merchant.upiAmount > 0 ? '#e0f2fe' : '#f1f5f9', color: merchant.upiAmount > 0 ? '#0369a1' : '#64748b', padding: '2px 8px', borderRadius: 6, fontWeight: 700, border: merchant.upiAmount > 0 ? '1px solid #0369a120' : '1px solid #e2e8f0' }}>
                                       UPI Amt: ₹{(merchant.upiAmount || 0).toLocaleString()}
                                     </span>
+
+                                    {/* UPI % of BT */}
+                                    {(() => {
+                                      const bt  = parseFloat(String(merchant.stage3   || '0').replace(/,/g,'')) || 0;
+                                      const upi = parseFloat(String(merchant.upiAmount || '0').replace(/,/g,'')) || 0;
+                                      if (!bt || !upi) return null;
+                                      const pct = Math.round((upi / bt) * 100);
+                                      const color  = pct >= 80 ? '#15803d' : pct >= 50 ? '#0369a1' : '#c2410c';
+                                      const bg     = pct >= 80 ? '#d8f3dc' : pct >= 50 ? '#e0f2fe' : '#ffedd5';
+                                      const border = pct >= 80 ? '#15803d20' : pct >= 50 ? '#0369a120' : '#c2410c20';
+                                      return (
+                                        <span style={{ fontSize: 9, background: bg, color, padding: '2px 8px', borderRadius: 6, fontWeight: 700, border: `1px solid ${border}` }}>
+                                          UPI {pct}% of BT
+                                        </span>
+                                      );
+                                    })()}
                                   </div>
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
