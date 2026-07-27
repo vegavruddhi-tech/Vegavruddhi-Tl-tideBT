@@ -957,6 +957,72 @@ export default function Dashboard() {
           </div>
         </Link>
 
+        {/* Team Fund Tracker */}
+        <div style={{ marginTop: 16, marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div className="section-title" style={{ margin: 0 }}>📊 Team Fund Tracker</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {selectedMonth && (
+                <span style={{ fontSize: 10, color: '#1a4731', background: '#d8f3dc', borderRadius: 20, padding: '2px 8px', fontWeight: 700 }}>
+                  {selectedMonth} {selectedYear}
+                </span>
+              )}
+              <button onClick={() => setShowFundTracker(!showFundTracker)} style={{ padding: '5px 12px', border: '1.5px solid #1a4731', background: showFundTracker ? '#1a4731' : '#fff', color: showFundTracker ? '#fff' : '#1a4731', borderRadius: 8, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                {showFundTracker ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </div>
+          {showFundTracker && (teamFundTracker.length === 0 ? (
+            <div style={{ background: '#fff', borderRadius: 12, border: '1.5px solid #e8f3ed', padding: '20px', textAlign: 'center' }}>
+              <p style={{ fontSize: 13, color: '#888', margin: 0 }}>No FSE fund data yet.</p>
+            </div>
+          ) : (
+            <div style={{ background: '#fff', borderRadius: 12, border: '1.5px solid #e8f3ed', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 640 }}>
+                <thead>
+                  <tr style={{ background: '#f5faf7' }}>
+                    <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: '#1a4731', borderBottom: '2px solid #e8f3ed' }}>FSE</th>
+                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#2e7d32', borderBottom: '2px solid #e8f3ed' }}>Recd</th>
+                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#388e3c', borderBottom: '2px solid #e8f3ed' }}>Carry</th>
+                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#1b5e20', borderBottom: '2px solid #e8f3ed' }}>Avail</th>
+                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#c62828', borderBottom: '2px solid #e8f3ed' }}>Deducted</th>
+                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#e65100', borderBottom: '2px solid #e8f3ed' }}>BT</th>
+                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#0369a1', borderBottom: '2px solid #e8f3ed' }}>RP#</th>
+                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#7c3aed', borderBottom: '2px solid #e8f3ed' }}>RP</th>
+                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#c62828', borderBottom: '2px solid #e8f3ed' }}>Fee</th>
+                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#4338ca', borderBottom: '2px solid #e8f3ed' }}>MKW</th>
+                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#880e4f', borderBottom: '2px solid #e8f3ed' }}>WFee</th>
+                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#1565c0', borderBottom: '2px solid #e8f3ed' }}>Left</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {teamFundTracker.map((fse, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #f0f0f0', background: i % 2 === 0 ? '#fff' : '#fafcfa' }}>
+                      <td style={{ padding: '8px 10px', fontWeight: 700, color: '#1a4731', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fse.fseName}</td>
+                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#2e7d32' }}>₹{fse.received?.toLocaleString()}</td>
+                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#388e3c' }}>₹{(fse.carryForward || 0).toLocaleString()}</td>
+                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#1b5e20' }}>₹{(fse.totalAvailable || fse.received || 0).toLocaleString()}</td>
+                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#c62828' }}>
+                        {(fse.deduction || 0) > 0 ? `−₹${(fse.deduction || 0).toLocaleString()}` : '₹0'}
+                      </td>
+                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#e65100' }}>₹{fse.usedBT?.toLocaleString()}</td>
+                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#0369a1' }}>{fse.rpCount || 0}</td>
+                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>₹{fse.usedRP?.toLocaleString()}</td>
+                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#c62828' }}>₹{fse.fee?.toLocaleString()}</td>
+                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#4338ca' }}>₹{fse.withdrawAmount?.toLocaleString() || 0}</td>
+                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#880e4f' }}>₹{fse.withdrawFee?.toLocaleString() || 0}</td>
+                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 800, color: fse.fundLeft >= 0 ? '#1565c0' : '#c62828' }}>
+                        ₹{fse.fundLeft?.toLocaleString()}
+                        {fse.fundLeft < 0 && <div style={{ fontSize: 7, color: '#c62828', fontWeight: 400 }}>BT done, fund pending</div>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+
         {/* Quick Overview */}
         <div className="section-title">Quick Overview</div>
         <div className="info-grid" style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
@@ -1491,71 +1557,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Team Fund Tracker */}
-        <div style={{ marginTop: 24, marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div className="section-title" style={{ margin: 0 }}>📊 Team Fund Tracker</div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              {selectedMonth && (
-                <span style={{ fontSize: 10, color: '#1a4731', background: '#d8f3dc', borderRadius: 20, padding: '2px 8px', fontWeight: 700 }}>
-                  {selectedMonth} {selectedYear}
-                </span>
-              )}
-              <button onClick={() => setShowFundTracker(!showFundTracker)} style={{ padding: '5px 12px', border: '1.5px solid #1a4731', background: showFundTracker ? '#1a4731' : '#fff', color: showFundTracker ? '#fff' : '#1a4731', borderRadius: 8, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
-                {showFundTracker ? 'Hide' : 'Show'}
-              </button>
-            </div>
-          </div>
-          {showFundTracker && (teamFundTracker.length === 0 ? (
-            <div style={{ background: '#fff', borderRadius: 12, border: '1.5px solid #e8f3ed', padding: '20px', textAlign: 'center' }}>
-              <p style={{ fontSize: 13, color: '#888', margin: 0 }}>No FSE fund data yet.</p>
-            </div>
-          ) : (
-            <div style={{ background: '#fff', borderRadius: 12, border: '1.5px solid #e8f3ed', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 640 }}>
-                <thead>
-                  <tr style={{ background: '#f5faf7' }}>
-                    <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700, color: '#1a4731', borderBottom: '2px solid #e8f3ed' }}>FSE</th>
-                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#2e7d32', borderBottom: '2px solid #e8f3ed' }}>Recd</th>
-                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#388e3c', borderBottom: '2px solid #e8f3ed' }}>Carry</th>
-                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#1b5e20', borderBottom: '2px solid #e8f3ed' }}>Avail</th>
-                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#c62828', borderBottom: '2px solid #e8f3ed' }}>Deducted</th>
-                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#e65100', borderBottom: '2px solid #e8f3ed' }}>BT</th>
-                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#0369a1', borderBottom: '2px solid #e8f3ed' }}>RP#</th>
-                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#7c3aed', borderBottom: '2px solid #e8f3ed' }}>RP</th>
-                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#c62828', borderBottom: '2px solid #e8f3ed' }}>Fee</th>
-                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#4338ca', borderBottom: '2px solid #e8f3ed' }}>MKW</th>
-                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#880e4f', borderBottom: '2px solid #e8f3ed' }}>WFee</th>
-                    <th style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#1565c0', borderBottom: '2px solid #e8f3ed' }}>Left</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {teamFundTracker.map((fse, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #f0f0f0', background: i % 2 === 0 ? '#fff' : '#fafcfa' }}>
-                      <td style={{ padding: '8px 10px', fontWeight: 700, color: '#1a4731', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fse.fseName}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#2e7d32' }}>₹{fse.received?.toLocaleString()}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#388e3c' }}>₹{(fse.carryForward || 0).toLocaleString()}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#1b5e20' }}>₹{(fse.totalAvailable || fse.received || 0).toLocaleString()}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#c62828' }}>
-                        {(fse.deduction || 0) > 0 ? `−₹${(fse.deduction || 0).toLocaleString()}` : '₹0'}
-                      </td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#e65100' }}>₹{fse.usedBT?.toLocaleString()}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#0369a1' }}>{fse.rpCount || 0}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>₹{fse.usedRP?.toLocaleString()}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#c62828' }}>₹{fse.fee?.toLocaleString()}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#4338ca' }}>₹{fse.withdrawAmount?.toLocaleString() || 0}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 700, color: '#880e4f' }}>₹{fse.withdrawFee?.toLocaleString() || 0}</td>
-                      <td style={{ padding: '8px 5px', textAlign: 'center', fontWeight: 800, color: fse.fundLeft >= 0 ? '#1565c0' : '#c62828' }}>
-                        ₹{fse.fundLeft?.toLocaleString()}
-                        {fse.fundLeft < 0 && <div style={{ fontSize: 7, color: '#c62828', fontWeight: 400 }}>BT done, fund pending</div>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
-        </div>
+
 
         {/* My Forms & Team Forms - Tabbed */}
         {(() => {
