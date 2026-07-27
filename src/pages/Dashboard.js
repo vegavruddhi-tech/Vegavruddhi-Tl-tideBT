@@ -49,7 +49,9 @@ export default function Dashboard() {
   const [showTeamList, setShowTeamList] = useState(false);
   const [myForms, setMyForms] = useState([]);
   const [expandedMyForm, setExpandedMyForm] = useState(null);
-  const [formTab, setFormTab] = useState('team-onboard');
+  const [formTab, setFormTab] = useState('my-payments');
+  const [teamFormTab, setTeamFormTab] = useState('team-onboard');
+  const [showTeamForms, setShowTeamForms] = useState(false);
   const [receivedPayments, setReceivedPayments] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [rewardPassData, setRewardPassData] = useState([]);
@@ -1757,9 +1759,9 @@ export default function Dashboard() {
               <div className="section-title" style={{ marginTop: 24, marginBottom: 12 }}>My Forms</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, marginBottom: 12, borderBottom: '2px solid #e8f3ed' }}>
                 {[
+                  { key: 'my-payments', label: 'BT Pay', count: filteredSentPayments.length },
                   { key: 'my-onboard', label: 'Onboard', count: myOnboardFiltered.length },
                   { key: 'my-withdraw', label: 'Mobikwik', count: myWithdraw.length },
-                  { key: 'my-payments', label: 'BT Pay', count: filteredSentPayments.length },
                 ].map(tab => (
                   <button key={tab.key} onClick={() => setFormTab(tab.key)}
                     style={{ padding: '6px 4px', border: 'none', background: formTab === tab.key ? '#1a4731' : 'transparent', color: formTab === tab.key ? '#fff' : '#1a4731', fontWeight: 700, fontSize: 9, cursor: 'pointer', borderRadius: '8px 8px 0 0', textAlign: 'center' }}>
@@ -1879,87 +1881,103 @@ export default function Dashboard() {
                 </div>)
               )}
 
-              {/* Team Forms */}
-              <div className="section-title" style={{ marginTop: 24, marginBottom: 12 }}>Team Forms</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4, marginBottom: 12, borderBottom: '2px solid #e8f3ed' }}>
-                {[
-                  { key: 'team-onboard', label: 'Onboard', count: teamOnboardFiltered.length },
-                  { key: 'team-withdraw', label: 'Mobikwik', count: teamWithdraw.length },
-                ].map(tab => (
-                  <button key={tab.key} onClick={() => setFormTab(tab.key)}
-                    style={{ padding: '6px 4px', border: 'none', background: formTab === tab.key ? '#1a4731' : 'transparent', color: formTab === tab.key ? '#fff' : '#1a4731', fontWeight: 700, fontSize: 9, cursor: 'pointer', borderRadius: '8px 8px 0 0', textAlign: 'center' }}>
-                    {tab.label} ({tab.count})
-                  </button>
-                ))}
+              {/* Team Forms - Collapsible Section */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 28, marginBottom: 12 }}>
+                <div className="section-title" style={{ margin: 0 }}>Team Forms ({filteredTeamForms.length})</div>
+                <button onClick={() => setShowTeamForms(!showTeamForms)}
+                  style={{
+                    padding: '4px 12px', border: '1px solid #1a4731', borderRadius: 8,
+                    background: showTeamForms ? '#1a4731' : '#fff',
+                    color: showTeamForms ? '#fff' : '#1a4731',
+                    fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+                  }}>
+                  {showTeamForms ? 'Hide Team Forms ▲' : 'Show Team Forms ▼'}
+                </button>
               </div>
 
-              {formTab === 'team-onboard' && (
+              {showTeamForms && (
                 <>
-                  {teamOnboardFiltered.length === 0 ? <div style={{ background: '#fff', borderRadius: 12, border: '1.5px solid #e8f3ed', padding: '20px', textAlign: 'center' }}><p style={{ fontSize: 13, color: '#888', margin: 0 }}>No team onboarding forms.</p></div> : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {teamOnboardFiltered.map((form, i) => {
-                        const date = new Date(form.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-                        const isExpanded = expandedTeamForm === (form._id || i);
-                        const status = form.onboardingStatus || form.merchantOpinion || 'Submitted';
-                        const statusColors = {
-                          'Ready For Onboarding': { bg: '#ede9fe', color: '#6b21a8' },
-                          'Completed':            { bg: '#d8f3dc', color: '#1a4731' },
-                          'Not Interested':       { bg: '#fee2e2', color: '#b91c1c' },
-                          'Need to visit again':  { bg: '#fff3c7', color: '#92400e' },
-                        };
-                        const sc = statusColors[status] || { bg: '#e8f3ed', color: '#1a4731' };
-                        return (
-                        <div key={form._id || i} style={{ background: '#fff', borderRadius: 10, border: '1.5px solid #e8f3ed', padding: '12px 14px', cursor: 'pointer' }} onClick={() => setExpandedTeamForm(isExpanded ? null : (form._id || i))}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#e8f3ed', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>🏪</div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 13, fontWeight: 700, color: '#1a4731', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{form.merchantName}</div>
-                              <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
-                                👤 {form.employeeName} · 📞 {form.merchantNumber} · 📅 {date}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4, marginBottom: 12, borderBottom: '2px solid #e8f3ed' }}>
+                    {[
+                      { key: 'team-onboard', label: 'Onboard', count: teamOnboardFiltered.length },
+                      { key: 'team-withdraw', label: 'Mobikwik', count: teamWithdraw.length },
+                    ].map(tab => (
+                      <button key={tab.key} onClick={() => setTeamFormTab(tab.key)}
+                        style={{ padding: '6px 4px', border: 'none', background: teamFormTab === tab.key ? '#1a4731' : 'transparent', color: teamFormTab === tab.key ? '#fff' : '#1a4731', fontWeight: 700, fontSize: 9, cursor: 'pointer', borderRadius: '8px 8px 0 0', textAlign: 'center' }}>
+                        {tab.label} ({tab.count})
+                      </button>
+                    ))}
+                  </div>
+
+                  {teamFormTab === 'team-onboard' && (
+                    <>
+                      {teamOnboardFiltered.length === 0 ? <div style={{ background: '#fff', borderRadius: 12, border: '1.5px solid #e8f3ed', padding: '20px', textAlign: 'center' }}><p style={{ fontSize: 13, color: '#888', margin: 0 }}>No team onboarding forms.</p></div> : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {teamOnboardFiltered.map((form, i) => {
+                            const date = new Date(form.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                            const isExpanded = expandedTeamForm === (form._id || i);
+                            const status = form.onboardingStatus || form.merchantOpinion || 'Submitted';
+                            const statusColors = {
+                              'Ready For Onboarding': { bg: '#ede9fe', color: '#6b21a8' },
+                              'Completed':            { bg: '#d8f3dc', color: '#1a4731' },
+                              'Not Interested':       { bg: '#fee2e2', color: '#b91c1c' },
+                              'Need to visit again':  { bg: '#fff3c7', color: '#92400e' },
+                            };
+                            const sc = statusColors[status] || { bg: '#e8f3ed', color: '#1a4731' };
+                            return (
+                            <div key={form._id || i} style={{ background: '#fff', borderRadius: 10, border: '1.5px solid #e8f3ed', padding: '12px 14px', cursor: 'pointer' }} onClick={() => setExpandedTeamForm(isExpanded ? null : (form._id || i))}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#e8f3ed', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>🏪</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1a4731', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{form.merchantName}</div>
+                                  <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
+                                    👤 {form.employeeName} · 📞 {form.merchantNumber} · 📅 {date}
+                                  </div>
+                                </div>
+                                <span style={{ padding: '3px 8px', borderRadius: 10, fontSize: 9, fontWeight: 700, background: sc.bg, color: sc.color, whiteSpace: 'nowrap' }}>{status}</span>
                               </div>
-                            </div>
-                            <span style={{ padding: '3px 8px', borderRadius: 10, fontSize: 9, fontWeight: 700, background: sc.bg, color: sc.color, whiteSpace: 'nowrap' }}>{status}</span>
+                              {isExpanded && (
+                                <div style={{ marginTop: 10, padding: '10px 12px', background: '#f8faf9', borderRadius: 8, fontSize: 11, color: '#333', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                                  <div><b>FSE:</b> {form.employeeName}</div>
+                                  <div><b>Merchant:</b> {form.merchantName}</div>
+                                  <div><b>Phone:</b> {form.merchantNumber}</div>
+                                  <div><b>Category:</b> {form.merchantCategory || '–'}</div>
+                                  <div><b>Opinion:</b> {form.merchantOpinion || '–'}</div>
+                                  <div><b>Status:</b> <span style={{ color: sc.color, fontWeight: 700 }}>{status}</span></div>
+                                  <div><b>Email:</b> {form.merchantEmailId || '–'}</div>
+                                  <div><b>Date:</b> {date}</div>
+                                </div>
+                              )}
+                            </div>); })}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {teamFormTab === 'team-withdraw' && (teamWithdraw.length === 0 ? <div style={{ background: '#fff', borderRadius: 12, border: '1.5px solid #e8f3ed', padding: '20px', textAlign: 'center' }}><p style={{ fontSize: 13, color: '#888', margin: 0 }}>No team withdraw forms yet.</p></div> : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {teamWithdraw.map((form, i) => { const date = new Date(form.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); const isExpanded = expandedTeamForm === (form._id || `tw-${i}`); return (
+                        <div key={form._id || i} style={{ background: '#fff', borderRadius: 10, border: '1px solid #e8f3ed', padding: '12px 14px', cursor: 'pointer' }} onClick={() => setExpandedTeamForm(isExpanded ? null : (form._id || `tw-${i}`))}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>💸</div>
+                            <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 700, color: '#4338ca' }}>₹{form.withdrawAmount?.toLocaleString() || '–'} · {form.employeeName}</div><div style={{ fontSize: 10, color: '#888' }}>{form.reasonOfWithdraw || '–'} · 📅 {date}</div></div>
                           </div>
                           {isExpanded && (
                             <div style={{ marginTop: 10, padding: '10px 12px', background: '#f8faf9', borderRadius: 8, fontSize: 11, color: '#333', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                               <div><b>FSE:</b> {form.employeeName}</div>
                               <div><b>Merchant:</b> {form.merchantName}</div>
                               <div><b>Phone:</b> {form.merchantNumber}</div>
-                              <div><b>Category:</b> {form.merchantCategory || '–'}</div>
-                              <div><b>Opinion:</b> {form.merchantOpinion || '–'}</div>
-                              <div><b>Status:</b> <span style={{ color: sc.color, fontWeight: 700 }}>{status}</span></div>
-                              <div><b>Email:</b> {form.merchantEmailId || '–'}</div>
+                              <div><b>Amount:</b> ₹{form.withdrawAmount?.toLocaleString() || '–'}</div>
+                              <div><b>Fees:</b> ₹{form.withdrawFees || 0}</div>
+                              <div><b>Reason:</b> {form.reasonOfWithdraw || '–'}</div>
+                              <div><b>Txn Date:</b> {form.transactionDate ? new Date(form.transactionDate).toLocaleDateString('en-IN') : '–'}</div>
                               <div><b>Date:</b> {date}</div>
                             </div>
                           )}
                         </div>); })}
-                    </div>
+                    </div>)
                   )}
                 </>
-              )}
-
-              {formTab === 'team-withdraw' && (teamWithdraw.length === 0 ? <div style={{ background: '#fff', borderRadius: 12, border: '1.5px solid #e8f3ed', padding: '20px', textAlign: 'center' }}><p style={{ fontSize: 13, color: '#888', margin: 0 }}>No team withdraw forms yet.</p></div> : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {teamWithdraw.map((form, i) => { const date = new Date(form.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); const isExpanded = expandedTeamForm === (form._id || `tw-${i}`); return (
-                    <div key={form._id || i} style={{ background: '#fff', borderRadius: 10, border: '1px solid #e8f3ed', padding: '12px 14px', cursor: 'pointer' }} onClick={() => setExpandedTeamForm(isExpanded ? null : (form._id || `tw-${i}`))}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>💸</div>
-                        <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 700, color: '#4338ca' }}>₹{form.withdrawAmount?.toLocaleString() || '–'} · {form.employeeName}</div><div style={{ fontSize: 10, color: '#888' }}>{form.reasonOfWithdraw || '–'} · 📅 {date}</div></div>
-                      </div>
-                      {isExpanded && (
-                        <div style={{ marginTop: 10, padding: '10px 12px', background: '#f8faf9', borderRadius: 8, fontSize: 11, color: '#333', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                          <div><b>FSE:</b> {form.employeeName}</div>
-                          <div><b>Merchant:</b> {form.merchantName}</div>
-                          <div><b>Phone:</b> {form.merchantNumber}</div>
-                          <div><b>Amount:</b> ₹{form.withdrawAmount?.toLocaleString() || '–'}</div>
-                          <div><b>Fees:</b> ₹{form.withdrawFees || 0}</div>
-                          <div><b>Reason:</b> {form.reasonOfWithdraw || '–'}</div>
-                          <div><b>Txn Date:</b> {form.transactionDate ? new Date(form.transactionDate).toLocaleDateString('en-IN') : '–'}</div>
-                          <div><b>Date:</b> {date}</div>
-                        </div>
-                      )}
-                    </div>); })}
-                </div>)
               )}
 
 
