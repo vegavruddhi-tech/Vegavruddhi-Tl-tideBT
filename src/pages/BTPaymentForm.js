@@ -35,6 +35,7 @@ export default function BTPaymentForm() {
   const [senderName, setSenderName] = useState('');
   const [transferTo, setTransferTo] = useState('');
   const [amount, setAmount] = useState('');
+  const [amountType, setAmountType] = useState('positive'); // 'positive' or 'negative'
   const [paymentDoneOn, setPaymentDoneOn] = useState('');
 
   const [error, setError] = useState('');
@@ -84,11 +85,14 @@ export default function BTPaymentForm() {
     setError(''); setSuccess('');
     if (!paymentDoneOn) { setError('Please select Payment done on.'); return; }
 
+    const num = Math.abs(parseFloat(amount) || 0);
+    const finalAmount = amountType === 'negative' ? -num : num;
+
     const payload = {
       transferToWhom,
       senderName,
       transferTo,
-      amount: parseFloat(amount),
+      amount: finalAmount,
       paymentDoneOn,
     };
 
@@ -109,7 +113,7 @@ export default function BTPaymentForm() {
 
   const handleClear = () => {
     setTransferToWhom(''); setSenderName(''); setTransferTo('');
-    setAmount(''); setPaymentDoneOn(''); setStep(1); setError(''); setSuccess('');
+    setAmount(''); setAmountType('positive'); setPaymentDoneOn(''); setStep(1); setError(''); setSuccess('');
   };
 
   return (
@@ -191,10 +195,47 @@ export default function BTPaymentForm() {
 
               <div style={{ marginBottom: 14 }}>
                 <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-dark)', display: 'block', marginBottom: 6 }}>
+                  Amount Type <span style={{ color: '#c62828' }}>*</span>
+                </label>
+                <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => setAmountType('positive')}
+                    style={{
+                      flex: 1, padding: '10px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      border: amountType === 'positive' ? '2px solid #2e7d32' : '1.5px solid #dde8dd',
+                      background: amountType === 'positive' ? '#e8f5e9' : '#fff',
+                      color: amountType === 'positive' ? '#1b5e20' : '#666',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    🟢 Positive (+) (Fund Given)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAmountType('negative')}
+                    style={{
+                      flex: 1, padding: '10px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      border: amountType === 'negative' ? '2px solid #c62828' : '1.5px solid #dde8dd',
+                      background: amountType === 'negative' ? '#fdecea' : '#fff',
+                      color: amountType === 'negative' ? '#b71c1c' : '#666',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    🔴 Negative (−) (Deduction/Return)
+                  </button>
+                </div>
+
+                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-dark)', display: 'block', marginBottom: 6 }}>
                   Amount <span style={{ color: '#c62828' }}>*</span>
                 </label>
-                <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Your answer"
-                  style={{ width: '100%', padding: '12px 14px', border: '1.5px solid #dde8dd', borderRadius: 10, fontSize: 14, background: '#fafcfa', outline: 'none' }} />
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 14, top: 12, fontWeight: 800, fontSize: 15, color: amountType === 'positive' ? '#2e7d32' : '#c62828' }}>
+                    {amountType === 'positive' ? '+' : '−'} ₹
+                  </span>
+                  <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Your answer"
+                    style={{ width: '100%', padding: '12px 14px 12px 45px', border: `1.5px solid ${amountType === 'positive' ? '#a5d6a7' : '#ef9a9a'}`, borderRadius: 10, fontSize: 14, background: '#fafcfa', outline: 'none' }} />
+                </div>
               </div>
             </FormCard>
           )}
