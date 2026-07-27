@@ -1557,53 +1557,72 @@ router.get('/tidebt-my-expenses', verifyToken, async (req, res) => {
 });
 
 // GET /api/tl/tidebt-my-bt-performance - TL's PERSONAL BT from BT_TL_CONNECT {MONTH}
-// Uses the TL's own name as an FSE (TLs also do BT work personally)
 router.get('/tidebt-my-bt-performance', verifyToken, async (req, res) => {
   try {
     const tl = await TeamLead.findById(req.user.id).select('name email');
     if (!tl) return res.status(404).json({ message: 'TL not found' });
 
-    const db     = mongoose.connection.db;
-    const tlName = tl.name.trim();
-    const tlEmail = tl.email.trim();
-    const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const db       = mongoose.connection.db;
+    const tlName   = tl.name.trim();
+    const tlEmail  = tl.email.trim();
+    const escape   = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const { selectedMonth, selectedYear } = req.query;
 
     // ── Cache check ───────────────────────────────────────────────────────
     const { cacheGet, cacheSet, cacheKey } = require('../utils/cache');
-    const ck = cacheKey('TL_MY_BT', tlName, selectedMonth, selectedYear);
+    const ck = cacheKey('TL_MY_BT_V10', tl._id.toString(), selectedMonth, selectedYear);
     const cached = await cacheGet(ck);
     if (cached) return res.json(cached);
 
-    // Get TL's own merchant numbers — bt_master PRIMARY, then TideBT_Merchants + forms as fallback
-    // IMPORTANT: Do NOT match by email in bt_master — TL email may match FSE records
-    // (e.g. TL "Niteesh" email = nksaroj2001@gmail.com also belongs to FSE "Niteesh Kumar Saroj")
-    // Only use exact fseName match for TL's personal merchants
-    // ALSO: Exclude merchants where tl field = TL's short name (those are FSE merchants under this TL)
-    const tlShortName = tlName.split(' ')[0]; // e.g. "Niteesh" from "Niteesh Kumar Saroj"
-    const [masterDocs, merchantDocs, formMerchantDocs] = await Promise.all([
-      // bt_master — exact fseName match only (NO email match for TL personal BT)
-      // Also exclude merchants where tl = tlShortName (those are FSE records, not TL personal)
-      db.collection('bt_master').find({
-        fseName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*\\d*\\s*$`, 'i') },
-        tl: { $not: { $regex: new RegExp(`^\\s*${escape(tlShortName)}\\s*$`, 'i') } }
-      }).project({ merchantNumber: 1 }).toArray(),
+    // 1. Resolve access record from TideBT_Access by tlEmail first, or tlName
+    let fseName = tlName;
+    let accessRecord = null;
+    try {
+      accessRecord = await db.collection('TideBT_Access').findOne({
+        $or: [
+          { fseEmail: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') } },
+          { fseName:  { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') } }
+        ]
+      });
+      if (accessRecord?.fseName) fseName = accessRecord.fseName.trim();
+    } catch {}
 
-      db.collection('TideBT_Merchants').find({
-        employeeName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') }
-      }).project({ merchantNumber: 1 }).toArray(),
+    const targetTlName = accessRecord?.tlName ? accessRecord.tlName.trim() : null;
 
-      db.collection('TideBT Form Responses').find({
-        employeeName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') },
-        formType: { $in: ['daily-visit', null] },
-        merchantNumber: { $exists: true, $ne: '' }
-      }).project({ merchantNumber: 1 }).toArray()
-    ]);
+    // Get TL's personal merchants from bt_master + form responses
+    const masterDocs = await db.collection('bt_master').find({
+      $or: [
+        ...(targetTlName ? [{
+          fseEmail: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') },
+          tl:       { $regex: new RegExp(`^\\s*${escape(targetTlName)}\\s*\\d*\\s*$`, 'i') }
+        }] : [{ fseEmail: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') } }]),
+        {
+          fseName:  { $regex: new RegExp(`^\\s*${escape(fseName)}\\s*\\d*\\s*$`, 'i') },
+          ...(targetTlName ? [{ tl: { $regex: new RegExp(`^\\s*${escape(targetTlName)}\\s*\\d*\\s*$`, 'i') } }] : [])
+        }
+      ]
+    }).project({ merchantNumber: 1 }).toArray();
+
+    const formDocs = await db.collection('TideBT Form Responses').find({
+      employeeName: { $regex: new RegExp(`^\\s*${escape(fseName)}\\s*\\d*\\s*$`, 'i') },
+      merchantNumber: { $exists: true, $ne: '' }
+    }).project({ merchantNumber: 1 }).toArray();
+
+    const formNums = formDocs.map(m => (m.merchantNumber || '').trim()).filter(Boolean);
+    let validFormNums = [];
+    if (formNums.length > 0) {
+      const otherFseMaster = await db.collection('bt_master').find({
+        merchantNumber: { $in: formNums },
+        fseName: { $not: { $regex: new RegExp(`^\\s*${escape(fseName)}\\s*\\d*\\s*$`, 'i') } },
+        fseEmail: { $not: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') } }
+      }).project({ merchantNumber: 1 }).toArray();
+      const otherNums = new Set(otherFseMaster.map(m => (m.merchantNumber || '').trim()));
+      validFormNums = formNums.filter(n => !otherNums.has(n));
+    }
 
     const merchantNumbers = [...new Set([
       ...masterDocs.map(m => (m.merchantNumber || '').trim()),
-      ...merchantDocs.map(m => (m.merchantNumber || '').trim()),
-      ...formMerchantDocs.map(m => (m.merchantNumber || '').trim())
+      ...validFormNums
     ].filter(Boolean))];
 
     const collectionName = await findConnectCollection(db, selectedMonth, selectedYear);
