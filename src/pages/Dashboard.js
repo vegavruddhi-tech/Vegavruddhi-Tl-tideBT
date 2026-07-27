@@ -65,7 +65,7 @@ export default function Dashboard() {
   const [targetSuccess, setTargetSuccess] = useState('');
   const [fseTargets, setFseTargets] = useState([]);
   const [teamFundTracker, setTeamFundTracker] = useState([]);
-  const [showFundTracker, setShowFundTracker] = useState(false);
+  const [showFundTracker, setShowFundTracker] = useState(true);
   const [showSentDetails, setShowSentDetails] = useState(false);
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expensePurpose, setExpensePurpose] = useState('');
