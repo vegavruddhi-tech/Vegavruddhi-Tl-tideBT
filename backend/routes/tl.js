@@ -97,6 +97,28 @@ const normalizeConnectDoc = (r) => {
   };
 };
 
+// GET /api/tl/bt-sync-version — returns last BT sync timestamp
+// Used by frontend to invalidate localStorage cache when new data is synced
+router.get('/bt-sync-version', async (req, res) => {
+  try {
+    const db = mongoose.connection.db;
+    // Get the most recent _syncedAt from BT_TL_CONNECT JULY
+    const allCollections = (await db.listCollections().toArray()).map(c => c.name);
+    const btCols = allCollections.filter(c => c.toUpperCase().startsWith('BT_TL_CONNECT'));
+    let latestSync = null;
+    for (const col of btCols) {
+      const latest = await db.collection(col).findOne({}, { sort: { _syncedAt: -1 }, projection: { _syncedAt: 1 } });
+      if (latest?._syncedAt) {
+        const t = new Date(latest._syncedAt).getTime();
+        if (!latestSync || t > latestSync) latestSync = t;
+      }
+    }
+    res.json({ version: latestSync || Date.now() });
+  } catch (err) {
+    res.json({ version: Date.now() });
+  }
+});
+
 // POST /api/tl/google-login
 router.post('/google-login', async (req, res) => {
   try {
