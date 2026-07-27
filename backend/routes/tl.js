@@ -133,13 +133,29 @@ router.post('/google-login', async (req, res) => {
     const payload = ticket.getPayload();
     const googleEmail = payload.email.toLowerCase();
 
-    // Find TL by email (check both email and emailId)
-    const tl = await TeamLead.findOne({
+    const db = mongoose.connection.db;
+    const accessRecord = await db.collection('TideBT_Access').findOne({
+      $or: [
+        { tlEmail: { $regex: new RegExp(`^${googleEmail}$`, 'i') } },
+        { fseEmail: { $regex: new RegExp(`^${googleEmail}$`, 'i') } }
+      ]
+    });
+
+    let tl = await TeamLead.findOne({
       $or: [
         { email: { $regex: new RegExp(`^${googleEmail}$`, 'i') } },
         { emailId: { $regex: new RegExp(`^${googleEmail}$`, 'i') } }
       ]
     });
+
+    if (!tl && accessRecord) {
+      tl = {
+        _id: accessRecord._id,
+        email: googleEmail,
+        name: accessRecord.tlName || accessRecord.fseName || 'Team Lead',
+        approvalStatus: 'approved'
+      };
+    }
 
     if (!tl) {
       return res.status(404).json({
@@ -147,7 +163,7 @@ router.post('/google-login', async (req, res) => {
       });
     }
 
-    if (tl.approvalStatus !== 'approved') {
+    if (tl.approvalStatus && tl.approvalStatus !== 'approved') {
       return res.status(403).json({ message: 'Your account is not approved yet.' });
     }
 
