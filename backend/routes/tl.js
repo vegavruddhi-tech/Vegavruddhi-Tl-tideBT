@@ -1596,12 +1596,6 @@ router.get('/tidebt-my-bt-performance', verifyToken, async (req, res) => {
     const escape   = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const { selectedMonth, selectedYear } = req.query;
 
-    // ── Cache check ───────────────────────────────────────────────────────
-    const { cacheGet, cacheSet, cacheKey } = require('../utils/cache');
-    const ck = cacheKey('TL_MY_BT_V10', tl._id.toString(), selectedMonth, selectedYear);
-    const cached = await cacheGet(ck);
-    if (cached) return res.json(cached);
-
     // 1. Resolve access record from TideBT_Access by tlEmail first, or tlName
     let fseName = tlName;
     let accessRecord = null;
@@ -1616,6 +1610,17 @@ router.get('/tidebt-my-bt-performance', verifyToken, async (req, res) => {
     } catch {}
 
     const targetTlName = accessRecord?.tlName ? accessRecord.tlName.trim() : null;
+
+    // GUARD: If targetTlName belongs to a DIFFERENT TL (e.g. Dheeraj != Faisal),
+    // this FSE record belongs to a Ground FSE under another TL — NOT this TL's personal FSE activity!
+    const currentFirstWord = tlName.split(' ')[0].toLowerCase();
+    if (targetTlName && !targetTlName.toLowerCase().includes(currentFirstWord)) {
+      console.log(`[My BT] TL "${tlName}" is NOT FSE "${fseName}" (who reports to TL "${targetTlName}") — returning 0 personal FSE metrics.`);
+      const empty = { success: true, btAmount: 0, btGap: 0, todaysBT: 0, yesterdaysBT: 0,
+        upiAmount: 0, upiGap: 0, upiTxnCount: 0, rewardPassCount: 0, passLiveCount: 0,
+        totalMerchants: 0, merchants: [], collectionUsed: null };
+      return res.json(empty);
+    }
 
     // Get TL's personal merchants from bt_master + form responses
     const masterDocs = await db.collection('bt_master').find({
