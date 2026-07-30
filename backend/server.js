@@ -30,6 +30,30 @@ async function connectDB() {
     });
     isConnected = true;
     console.log('✅ MongoDB connected - TL TideBT');
+
+    // Ensure database indexes exist for ultra-fast queries (background non-blocking)
+    (async () => {
+      try {
+        const db = mongoose.connection.db;
+        if (!db) return;
+        await Promise.all([
+          db.collection('bt_master').createIndex({ merchantNumber: 1 }),
+          db.collection('bt_master').createIndex({ fseName: 1, tl: 1 }),
+          db.collection('TideBT_Payments').createIndex({ transferTo: 1 }),
+          db.collection('TideBT_Payments').createIndex({ senderName: 1 }),
+          db.collection('TideBT_Access').createIndex({ tlName: 1 }),
+          db.collection('TideBT_Access').createIndex({ fseName: 1 })
+        ]);
+        const cols = (await db.listCollections().toArray()).map(c => c.name);
+        const btCols = cols.filter(c => c.toUpperCase().startsWith('BT_TL_CONNECT'));
+        for (const col of btCols) {
+          await db.collection(col).createIndex({ merchantNumber: 1 });
+        }
+        console.log('⚡ All MongoDB Atlas Indexes Verified/Created!');
+      } catch (idxErr) {
+        console.warn('Index creation notice:', idxErr.message);
+      }
+    })();
   } catch (err) {
     isConnected = false;
     console.error('❌ MongoDB connection error:', err.message);
