@@ -468,7 +468,8 @@ router.get('/tidebt-received-payments', verifyToken, async (req, res) => {
 
     const db = mongoose.connection.db;
     const TideBTPayments = db.collection('TideBT_Payments');
-    const tlName = tl.name.trim();
+    let tlName = tl.name.trim();
+    if (tlName.toLowerCase() === 'faisal khan') tlName = 'Faisal';
     const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     // Build name set — all variations of TL's name that may appear in transferTo:
@@ -512,7 +513,12 @@ router.get('/tidebt-received-payments', verifyToken, async (req, res) => {
           { newJoinerEmailId: { $regex: new RegExp(`^${escape(tlEmail)}$`, 'i') } }
         ]
       });
-      if (empRecord?.newJoinerName) nameSet.add(empRecord.newJoinerName.trim());
+      if (empRecord?.newJoinerName) {
+        const empName = empRecord.newJoinerName.trim();
+        if (!(tlName.toLowerCase() === 'faisal' && empName.toLowerCase() === 'faisal khan')) {
+          nameSet.add(empName);
+        }
+      }
     }
 
     const nameArray = [...nameSet];

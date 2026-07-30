@@ -398,9 +398,7 @@ export default function Dashboard() {
   // Fetch received payments
   useEffect(() => {
     if (!token || !tl) return;
-    // Add today's date to cache key so payments auto-refresh daily (no stale duplicates)
-    const today = new Date().toISOString().split('T')[0];
-    cachedFetch(`${PROFILE_API_BASE}/api/tl/tidebt-received-payments`, setReceivedPayments, d => Array.isArray(d.payments) ? d.payments : Array.isArray(d) ? d : [], `tl_payments_${today}`);
+    cachedFetch(`${PROFILE_API_BASE}/api/tl/tidebt-received-payments`, setReceivedPayments, d => Array.isArray(d.payments) ? d.payments : Array.isArray(d) ? d : [], 'tl_payments');
   }, [token, tl, cachedFetch]);
 
   // Fetch expenses
