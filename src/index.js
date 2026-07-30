@@ -9,3 +9,12 @@ root.render(
     <App />
   </React.StrictMode>
 );
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/service-worker.js')
+      .then((reg) => console.log('✅ TL ServiceWorker registered:', reg.scope))
+      .catch((err) => console.warn('⚠️ TL ServiceWorker registration failed:', err));
+  });
+}
