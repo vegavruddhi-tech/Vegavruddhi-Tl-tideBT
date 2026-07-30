@@ -266,7 +266,8 @@ router.get('/profile', verifyToken, async (req, res) => {
       });
 
       if (accessRecord?.tlName) {
-        const canonical = accessRecord.tlName.trim();
+        let canonical = accessRecord.tlName.trim();
+        if (canonical.toLowerCase() === 'faisal khan') canonical = 'Faisal';
         const tlObj = tl.toObject();
         tlObj.name = canonical;
         console.log(`[Profile] Canonical name: "${portalName}" → "${canonical}" (via ${accessRecord.tlEmail ? 'email' : 'name'})`);
@@ -495,7 +496,12 @@ router.get('/tidebt-received-payments', verifyToken, async (req, res) => {
     const fseAccessRecords = await db.collection('TideBT_Access').find({
       fseName: { $regex: new RegExp(`^\\s*${escape(tlName)}\\s*$`, 'i') }
     }).toArray();
-    fseAccessRecords.forEach(r => { if (r.fseName) nameSet.add(r.fseName.trim()); });
+    fseAccessRecords.forEach(r => {
+      if (r.fseName) {
+        if (tlName.toLowerCase() === 'faisal' && r.fseName.toLowerCase() === 'faisal khan') return;
+        nameSet.add(r.fseName.trim());
+      }
+    });
 
     // Also add email-based lookup from Employees collection (handles name mismatches)
     const tlEmail = (tl.email || tl.emailId || '').trim();
