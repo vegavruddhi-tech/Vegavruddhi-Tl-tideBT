@@ -462,10 +462,6 @@ router.get('/tidebt-received-payments', verifyToken, async (req, res) => {
     const tl = await TeamLead.findById(req.user.id).select('name email emailId');
     if (!tl) return res.status(404).json({ message: 'Team Lead not found' });
 
-    const ck = cacheKey('TL_PAYMENTS', tl._id.toString());
-    const cached = await cacheGet(ck);
-    if (cached) return res.json(cached);
-
     const db = mongoose.connection.db;
     const TideBTPayments = db.collection('TideBT_Payments');
     let tlName = tl.name.trim();
@@ -539,7 +535,6 @@ router.get('/tidebt-received-payments', verifyToken, async (req, res) => {
     console.log(`[TL Payments] TL: "${tlName}", names searched: ${JSON.stringify(nameArray)}, found: ${payments.length}`);
 
     const result = normalizedPayments;
-    await cacheSet(ck, result);
     res.json(result);
   } catch (err) {
     console.error('Received payments error:', err.message);
