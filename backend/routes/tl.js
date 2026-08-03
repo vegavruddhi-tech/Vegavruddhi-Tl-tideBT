@@ -1182,12 +1182,15 @@ router.get('/tidebt-team-fund-tracker', verifyToken, async (req, res) => {
 
     const fseCarryMap = {}; // fseName.toLowerCase() → cumulative carry
 
-    // ── For July 2026: use TideBT_OpeningBalances as carry source (same as admin panel) ──
-    const OPENING_BALANCE_MONTH = 'July';
-    const OPENING_BALANCE_YEAR  = 2026;
-
-    if (selectedMonth === OPENING_BALANCE_MONTH && parseInt(selectedYear) === OPENING_BALANCE_YEAR) {
-      const openingBalances = await db.collection('TideBT_OpeningBalances').find({}).toArray();
+    // ── Carry forward from TideBT_OpeningBalances ──────────────────────────
+    if (selectedMonth && selectedMonth !== 'all' && selectedMonth !== 'ALL') {
+      const targetYr = parseInt(selectedYear || 2026);
+      const openingBalances = await db.collection('TideBT_OpeningBalances').find({
+        $or: [
+          { month: selectedMonth, year: targetYr },
+          { month: { $exists: false } }
+        ]
+      }).toArray();
       openingBalances.forEach(b => {
         const nameLower = (b.name || '').trim().toLowerCase();
         if (!nameLower || (b.openingBalance || 0) <= 0) return;
@@ -2365,9 +2368,15 @@ router.get('/tidebt-carry-forward', verifyToken, async (req, res) => {
     // Look up in TideBT_OpeningBalances — ONLY TL-type records to avoid picking up FSE balances
     let carryForward = 0;
     for (const nameLower of nameVariations) {
+      const reqMonth = req.query.selectedMonth || 'July';
+      const reqYr = parseInt(req.query.selectedYear || 2026);
       const record = await db.collection('TideBT_OpeningBalances').findOne({
-        type: 'TL', // strict: only TL records, never FSE records
-        name: { $regex: new RegExp(`^\\s*${escape(nameLower)}\\s*$`, 'i') }
+        type: 'TL',
+        name: { $regex: new RegExp(`^\\s*${escape(nameLower)}\\s*$`, 'i') },
+        $or: [
+          { month: reqMonth, year: reqYr },
+          { month: { $exists: false } }
+        ]
       });
       if (record && (record.openingBalance || 0) > 0) {
         carryForward = Math.round(record.openingBalance);
