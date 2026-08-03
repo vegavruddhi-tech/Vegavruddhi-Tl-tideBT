@@ -1,92 +1,98 @@
 const Redis = require('ioredis');
-const mongoose = require('mongoose');
 
-let redis = null;
-const CACHE_COLLECTION = 'TideBT_SummaryCache';
+const UPSTASH_REST_URL = process.env.UPSTASH_REDIS_REST_URL || 'https://distinct-magpie-119165.upstash.io';
+const UPSTASH_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || 'gQAAAAAAAdF9AAIgcDEyMDJmN2EyMWQ4ZWI0ZDU3OGFkN2VjOTc0MzJhMjM4OA';
 
-function getRedis() {
-  if (!redis && process.env.REDIS_URL) {
+let ioredisClient = null;
+const memoryFallback = new Map();
+
+function getIoRedis() {
+  if (!ioredisClient && process.env.REDIS_URL) {
     try {
-      redis = new Redis(process.env.REDIS_URL, {
-        maxRetriesPerRequest: 3,
-        enableReadyCheck: true,
-        retryStrategy(times) {
-          return Math.min(times * 50, 2000);
-        }
+      ioredisClient = new Redis(process.env.REDIS_URL, {
+        maxRetriesPerRequest: 1,
+        connectTimeout: 2000,
+        enableReadyCheck: false,
+        retryStrategy() { return 1000; }
       });
-      redis.on('connect', () => console.log('⚡ Connected to Upstash Redis (TL)'));
-      redis.on('error', (err) => console.warn('⚠️ Redis error:', err.message));
+      ioredisClient.on('error', () => { ioredisClient = null; });
     } catch (e) {
-      redis = null;
+      ioredisClient = null;
     }
   }
-  return redis;
+  return ioredisClient;
 }
 
-function getDb() {
-  return mongoose.connection.readyState === 1 ? mongoose.connection.db : null;
+async function upstashRestCall(command, ...args) {
+  try {
+    const path = [command, ...args.map(a => encodeURIComponent(String(a)))].join('/');
+    const url = `${UPSTASH_REST_URL}/${path}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${UPSTASH_REST_TOKEN}` },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.result;
+  } catch (e) {
+    return null;
+  }
 }
 
-function cacheKey(...parts) {
-  return 'tidebt:tl:' + parts.filter(p => p != null).join(':').replace(/\s+/g, '_').toUpperCase();
-}
+const cacheKey = (...parts) => 'tidebt:' + parts.filter(Boolean).join(':');
 
-async function cacheGet(key, maxAgeMs = 300000) {
-  const client = getRedis();
-  if (client) {
+const cacheGet = async (key) => {
+  const restVal = await upstashRestCall('get', key);
+  if (restVal) {
+    try { return JSON.parse(restVal); } catch (e) { return restVal; }
+  }
+
+  const io = getIoRedis();
+  if (io) {
     try {
-      const data = await client.get(key);
+      const data = await io.get(key);
       if (data) return JSON.parse(data);
-    } catch (e) {
-      console.warn('Redis get error:', e.message);
-    }
+    } catch (e) {}
   }
-  // MongoDB fallback
-  try {
-    const db = getDb(); if (!db) return null;
-    const doc = await db.collection(CACHE_COLLECTION).findOne({ cacheKey: key });
-    if (doc && doc.updatedAt) {
-      const age = Date.now() - new Date(doc.updatedAt).getTime();
-      if (age < maxAgeMs) return doc.data;
-    }
-  } catch {}
+
+  const mem = memoryFallback.get(key);
+  if (mem && mem.expiry > Date.now()) return mem.data;
   return null;
-}
+};
 
-async function cacheSet(key, value, ttlSeconds = 300) {
-  const client = getRedis();
-  const json = JSON.stringify(value);
-  if (client) {
-    try {
-      await client.set(key, json, 'EX', ttlSeconds);
-    } catch (e) {
-      console.warn('Redis set error:', e.message);
-    }
+const cacheSet = async (key, data, ttlSeconds = 86400) => {
+  const json = JSON.stringify(data);
+  await upstashRestCall('set', key, json, 'EX', ttlSeconds);
+
+  const io = getIoRedis();
+  if (io) {
+    try { await io.set(key, json, 'EX', ttlSeconds); } catch (e) {}
   }
-  // Also write MongoDB fallback
-  try {
-    const db = getDb(); if (!db) return;
-    await db.collection(CACHE_COLLECTION).updateOne(
-      { cacheKey: key },
-      { $set: { cacheKey: key, data: value, updatedAt: new Date() } },
-      { upsert: true }
-    );
-  } catch {}
-}
 
-async function cacheInvalidatePattern(pattern) {
-  const client = getRedis();
-  if (client) {
+  memoryFallback.set(key, { data, expiry: Date.now() + (ttlSeconds * 1000) });
+};
+
+const cacheInvalidatePattern = async (pattern) => {
+  const io = getIoRedis();
+  if (io) {
     try {
-      const keys = await client.keys('tidebt:tl:' + pattern);
-      if (keys.length > 0) await client.del(...keys);
-    } catch {}
+      const keys = await io.keys(pattern);
+      if (keys.length > 0) await io.del(...keys);
+    } catch (e) {}
   }
-  try {
-    const db = getDb(); if (!db) return;
-    const regex = '^tidebt:tl:' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$';
-    await db.collection(CACHE_COLLECTION).deleteMany({ cacheKey: { $regex: new RegExp(regex, 'i') } });
-  } catch {}
-}
+  for (const k of memoryFallback.keys()) {
+    if (k.includes(pattern.replace('*', ''))) memoryFallback.delete(k);
+  }
+};
 
-module.exports = { cacheGet, cacheSet, cacheInvalidatePattern, cacheKey };
+module.exports = {
+  cacheKey,
+  cacheGet,
+  cacheSet,
+  cacheInvalidatePattern
+};
